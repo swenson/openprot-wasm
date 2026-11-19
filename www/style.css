@@ -246,10 +246,6 @@ button:disabled {
   color: var(--accent);
 }
 
-.images .pending {
-  color: var(--muted);
-}
-
 .table-wrap ~ .meta {
   margin-top: 10px;
 }

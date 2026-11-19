@@ -7,7 +7,6 @@ use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::task::{Context, Poll, Waker};
 
-use caliptra_api::SocManager;
 use caliptra_hw_model_types::{EtrngResponse, RandomEtrngResponses, RandomNibbles};
 use mcu_hw_model::{Fuses, InitParams, McuHwModel, ModelEmulated};
 use rand::rngs::StdRng;
@@ -32,39 +31,6 @@ pub struct BootImages<'a> {
     pub mcu_fw: &'a [u8],
     /// SHA-384 of the vendor public keys that signed the Caliptra firmware.
     pub vendor_pk_hash: [u8; 48],
-}
-
-/// The versions that Caliptra's ROM and firmware report in the
-/// `CPTRA_FW_REV_ID` registers, as "major.minor.patch". These are the numbers
-/// the image build stamped on the images, which can differ from the version
-/// of the sources.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct CaliptraVersions {
-    /// `None` until the ROM has written its version.
-    pub rom: Option<String>,
-    /// `None` until the runtime is ready. A firmware bundle stamped with
-    /// version 0 reads "0.0.0".
-    pub fmc: Option<String>,
-    pub runtime: Option<String>,
-}
-
-impl CaliptraVersions {
-    /// Decodes `CPTRA_FW_REV_ID[0]` (the ROM version in the low half and the
-    /// FMC version in the high half) and `CPTRA_FW_REV_ID[1]` (the runtime
-    /// version). The firmware's registers are final once the runtime is
-    /// ready.
-    fn from_registers(rev_id_0: u32, rev_id_1: u32, runtime_ready: bool) -> Self {
-        // ROM and FMC: 5 bits of major, 5 of minor, 6 of patch.
-        let short = |v: u32| format!("{}.{}.{}", (v >> 11) & 0x1f, (v >> 6) & 0x1f, v & 0x3f);
-        // Runtime: 8 bits of major, 8 of minor, 16 of patch.
-        let long = |v: u32| format!("{}.{}.{}", v >> 24, (v >> 16) & 0xff, v & 0xffff);
-        let rom = rev_id_0 & 0xffff;
-        Self {
-            rom: (rom != 0).then(|| short(rom)),
-            fmc: runtime_ready.then(|| short(rev_id_0 >> 16)),
-            runtime: runtime_ready.then(|| long(rev_id_1)),
-        }
-    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -222,16 +188,6 @@ impl Machine {
         self.shared.model.borrow_mut().mci_fw_fatal_error()
     }
 
-    /// The versions that Caliptra's ROM, FMC and runtime have reported.
-    pub fn caliptra_versions(&self) -> CaliptraVersions {
-        let mut model = self.shared.model.borrow_mut();
-        let mut soc = model.caliptra_soc_manager();
-        let rev_id_0 = soc.soc_ifc().cptra_fw_rev_id().at(0).read();
-        let rev_id_1 = soc.soc_ifc().cptra_fw_rev_id().at(1).read();
-        let runtime_ready = soc.soc_ifc().cptra_flow_status().read().ready_for_runtime();
-        CaliptraVersions::from_registers(rev_id_0, rev_id_1, runtime_ready)
-    }
-
     /// The UART output of Caliptra and the MCU since the last call.
     pub fn take_uart(&mut self) -> String {
         std::mem::take(&mut self.uart)
@@ -243,37 +199,5 @@ impl Machine {
         let new = events[self.events_taken..].to_vec();
         self.events_taken = events.len();
         new
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::CaliptraVersions;
-
-    #[test]
-    fn decodes_caliptra_versions() {
-        // ROM 2.1.3 and FMC 2.1.5 in one register, runtime 2.1.5 in the other.
-        let rom = (2 << 11) | (1 << 6) | 3;
-        let fmc = (2 << 11) | (1 << 6) | 5;
-        let versions = CaliptraVersions::from_registers((fmc << 16) | rom, 0x0201_0005, true);
-        assert_eq!(versions.rom.as_deref(), Some("2.1.3"));
-        assert_eq!(versions.fmc.as_deref(), Some("2.1.5"));
-        assert_eq!(versions.runtime.as_deref(), Some("2.1.5"));
-    }
-
-    #[test]
-    fn firmware_versions_wait_for_the_runtime() {
-        let rom = 2 << 11;
-        let versions = CaliptraVersions::from_registers(rom, 0, false);
-        assert_eq!(versions.rom.as_deref(), Some("2.0.0"));
-        assert_eq!(versions.fmc, None);
-        assert_eq!(versions.runtime, None);
-
-        // A bundle stamped with version 0.
-        let versions = CaliptraVersions::from_registers(rom, 0, true);
-        assert_eq!(versions.fmc.as_deref(), Some("0.0.0"));
-        assert_eq!(versions.runtime.as_deref(), Some("0.0.0"));
-
-        assert_eq!(CaliptraVersions::from_registers(0, 0, false).rom, None);
     }
 }

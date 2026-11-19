@@ -42,18 +42,15 @@
               <th scope="col">Image</th>
               <th scope="col">Built from</th>
               <th scope="col">Source version</th>
-              <th scope="col">Version it reports</th>
             </tr>
           </thead>
           <tbody></tbody>
         </table>
       </div>
       <p class="meta">
-        The version an image reports is a number that the build wrote into
-        the image, which Caliptra copies to its
-        <code>CPTRA_FW_REV_ID</code> registers. It can differ from the version
-        of the sources. The MCU ROM and the MCU firmware have no version
-        number.
+        The source version is the one in caliptra-sw's sources. The MCU ROM
+        and the MCU firmware have no version number: the revision identifies
+        them.
       </p>
       <p id="emulator-sources" class="meta"></p>
     </section>
