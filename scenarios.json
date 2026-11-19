@@ -1,0 +1,71 @@
+{
+  "openprot": {
+    "repo": "https://github.com/OpenPRoT/openprot",
+    "rev": "30b78eeb9b77f71ea62713d4855dd04c4170e109"
+  },
+  "scenarios": [
+    {
+      "id": "spdm",
+      "title": "SPDM responder",
+      "description": "The host is an SPDM requester. It sends GET_VERSION, GET_CAPABILITIES and NEGOTIATE_ALGORITHMS to the responder as MCTP messages over I3C, then checks that GET_DIGESTS is refused (the image has no certificates) and that the responder answers the request after that.",
+      "image": "//target/veer/tests/spdm:spdm_image",
+      "driver": "spdm"
+    },
+    {
+      "id": "flash",
+      "title": "Flash driver",
+      "description": "The firmware erases, programs and reads back the primary flash through the flash HAL.",
+      "image": "//target/veer/tests/flash:flash",
+      "driver": "on-device"
+    },
+    {
+      "id": "flash-service",
+      "title": "Flash service",
+      "description": "A client app erases, programs and reads back flash through the flash service, and checks that the server rejects requests outside the flash or not aligned to an erase block.",
+      "image": "//target/veer/tests/flash_service:flash_service",
+      "driver": "on-device"
+    },
+    {
+      "id": "sha",
+      "title": "SHA driver",
+      "description": "The firmware checks SHA-384 and SHA-512 digests of known messages, computed by the Caliptra core over its mailbox.",
+      "image": "//target/veer/tests/sha:sha",
+      "driver": "on-device"
+    },
+    {
+      "id": "rng",
+      "title": "RNG driver",
+      "description": "The firmware asks the Caliptra core for random bytes over its mailbox and checks that the driver fills buffers of several lengths.",
+      "image": "//target/veer/tests/rng:rng",
+      "driver": "on-device"
+    },
+    {
+      "id": "ecdsa",
+      "title": "ECDSA driver",
+      "description": "The firmware asks the Caliptra core to verify a known P-384 signature, and checks that verification fails for a changed digest, key or signature.",
+      "image": "//target/veer/tests/ecdsa:ecdsa",
+      "driver": "on-device"
+    },
+    {
+      "id": "dpe",
+      "title": "DPE driver",
+      "description": "The firmware certifies a key with the DPE of the Caliptra core, signs a digest with it, checks the signature and reads the certificate chain.",
+      "image": "//target/veer/tests/dpe:dpe",
+      "driver": "on-device"
+    },
+    {
+      "id": "mci",
+      "title": "MCI driver",
+      "description": "The firmware reads and writes the MCI registers and takes the MCI interrupt for events that it triggers.",
+      "image": "//target/veer/tests/mci:mci",
+      "driver": "on-device"
+    },
+    {
+      "id": "handoff",
+      "title": "ROM handoff table",
+      "description": "A service reads the handoff table that the MCU ROM leaves for the firmware and checks what the ROM recorded for this boot.",
+      "image": "//target/veer/tests/handoff:handoff",
+      "driver": "on-device"
+    }
+  ]
+}

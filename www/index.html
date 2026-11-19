@@ -1,0 +1,74 @@
+<!doctype html>
+<!-- Licensed under the Apache-2.0 license -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OpenPRoT on the Caliptra emulator</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1>OpenPRoT on the Caliptra emulator</h1>
+    <p class="lede">
+      This page runs OpenPRoT's VeeR firmware on an emulated Caliptra 2.1
+      subsystem (the Caliptra core and the MCU), in this browser tab. Each
+      scenario is one of OpenPRoT's test images, with the host's side of the
+      test built into the page.
+    </p>
+  </header>
+
+  <main>
+    <section class="panel" aria-labelledby="scenario-heading">
+      <h2 id="scenario-heading">Scenario</h2>
+      <div class="controls">
+        <select id="scenario" aria-label="Scenario"></select>
+        <button id="run" class="primary" disabled>Run</button>
+        <button id="pause" disabled>Pause</button>
+        <span id="status" class="badge" role="status" data-state="idle">Loading</span>
+        <span id="stats" class="stats"></span>
+      </div>
+      <p id="description" class="description"></p>
+      <p id="image" class="meta"></p>
+      <p id="error" class="error" hidden></p>
+    </section>
+
+    <section class="panel" aria-labelledby="images-heading">
+      <h2 id="images-heading">Images and versions</h2>
+      <div class="table-wrap">
+        <table id="images" class="images">
+          <thead>
+            <tr>
+              <th scope="col">Image</th>
+              <th scope="col">Built from</th>
+              <th scope="col">Source version</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <p class="meta">
+        The source version is the one in caliptra-sw's sources. The MCU ROM
+        and the MCU firmware have no version number: the revision identifies
+        them.
+      </p>
+      <p id="emulator-sources" class="meta"></p>
+    </section>
+
+    <div class="columns">
+      <section class="panel" aria-labelledby="steps-heading">
+        <h2 id="steps-heading">Host driver</h2>
+        <ol id="steps" class="steps"></ol>
+        <p id="steps-empty" class="meta">Press Run to boot the image and start the host's side of the scenario. A run takes about a minute.</p>
+      </section>
+
+      <section class="panel" aria-labelledby="uart-heading">
+        <h2 id="uart-heading">UART of Caliptra and the MCU</h2>
+        <pre id="uart" class="console" tabindex="0" aria-label="UART output of Caliptra and the MCU"></pre>
+      </section>
+    </div>
+  </main>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

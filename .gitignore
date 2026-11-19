@@ -1,0 +1,7 @@
+/emulator/target/
+/emulator/pkg/
+# Built by build.sh
+/www/pkg/
+/www/images/
+/www/scenarios.json
+/www/build-info.json

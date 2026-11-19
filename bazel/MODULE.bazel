@@ -1,0 +1,3 @@
+# Licensed under the Apache-2.0 license
+
+module(name = "openprot_wasm_bazel")
