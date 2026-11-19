@@ -33,6 +33,31 @@
       <p id="error" class="error" hidden></p>
     </section>
 
+    <section class="panel" aria-labelledby="images-heading">
+      <h2 id="images-heading">Images and versions</h2>
+      <div class="table-wrap">
+        <table id="images" class="images">
+          <thead>
+            <tr>
+              <th scope="col">Image</th>
+              <th scope="col">Built from</th>
+              <th scope="col">Source version</th>
+              <th scope="col">Version it reports</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <p class="meta">
+        The version an image reports is a number that the build wrote into
+        the image, which Caliptra copies to its
+        <code>CPTRA_FW_REV_ID</code> registers. It can differ from the version
+        of the sources. The MCU ROM and the MCU firmware have no version
+        number.
+      </p>
+      <p id="emulator-sources" class="meta"></p>
+    </section>
+
     <div class="columns">
       <section class="panel" aria-labelledby="steps-heading">
         <h2 id="steps-heading">Host driver</h2>
@@ -46,8 +71,6 @@
       </section>
     </div>
   </main>
-
-  <footer id="build-info"></footer>
 
   <script type="module" src="app.js"></script>
 </body>

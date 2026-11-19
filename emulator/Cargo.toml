@@ -27,6 +27,7 @@ serde_json = "1"
 # main-2.1 line that builds for wasm32; OpenPRoT's own pin
 # (third_party/caliptra/versions.bzl) is an ancestor of it. Keep the
 # caliptra-sw revision the one that caliptra-mcu-sw revision depends on.
+caliptra-api = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "757b7445b18483d624612f03b195cbff2b415963" }
 caliptra-hw-model = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "757b7445b18483d624612f03b195cbff2b415963", default-features = false }
 caliptra-hw-model-types = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "757b7445b18483d624612f03b195cbff2b415963" }
 mcu-hw-model = { git = "https://github.com/swenson/caliptra-mcu-sw", rev = "81c58651e7dbcf842ed61bee031f3358893d12f8", package = "caliptra-mcu-hw-model", default-features = false }

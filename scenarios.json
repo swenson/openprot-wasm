@@ -7,7 +7,7 @@
     {
       "id": "spdm",
       "title": "SPDM responder",
-      "description": "The host is an SPDM requester. It sends GET_VERSION, GET_CAPABILITIES and NEGOTIATE_ALGORITHMS to the responder as MCTP messages over I3C, then checks that GET_DIGESTS is refused (the image has no certificates) and that the responder still answers.",
+      "description": "The host is an SPDM requester. It sends GET_VERSION, GET_CAPABILITIES and NEGOTIATE_ALGORITHMS to the responder as MCTP messages over I3C, then checks that GET_DIGESTS is refused (the image has no certificates) and that the responder answers the request after that.",
       "image": "//target/veer/tests/spdm:spdm_image",
       "driver": "spdm"
     },

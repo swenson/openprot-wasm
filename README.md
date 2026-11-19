@@ -32,12 +32,15 @@ The two drivers:
   that.
 - `on-device` boots an image that tests itself and waits for it to exit with
   PASS or FAIL. OpenPRoT runs such images with `caliptra_on_device_test` and
-  has more of them. The eight in the table are the ones run here so far.
+  has more of them. The eight `on-device` scenarios in the table are the ones
+  run here so far.
 
 The page shows the driver's steps, the messages it exchanges, and the UART
 output of Caliptra and the MCU, with the ANSI colors of OpenPRoT's log lines.
-`?scenario=<id>` selects a scenario and `&run`
-starts it, e.g. `http://localhost:8080/?scenario=spdm&run`.
+A table lists each image, the sources it was built from, and the version it
+reports (see [Sources and versions](#sources-and-versions)).
+`?scenario=<id>` selects a scenario and `&run` starts it, e.g.
+`http://localhost:8080/?scenario=spdm&run`.
 
 ## How it works
 
@@ -83,8 +86,9 @@ builds some of the scenarios, and `SKIP_FIRMWARE=1` rebuilds the emulator
 only.
 
 The output goes to `www/`: `images/` (the boot files, named by content, so
-scenarios share the ROMs and the Caliptra firmware), `scenarios.json`, `pkg/`
-(the WASM module) and `build-info.json`.
+scenarios share the ROMs and the Caliptra firmware), `scenarios.json` (the
+scenarios, their images and the sources of the images), `pkg/` (the WASM
+module) and `build-info.json` (the emulator's sources).
 
 ## Testing
 
@@ -114,7 +118,7 @@ seconds.
 ## Adding a scenario
 
 For an image that tests itself, add an entry to `scenarios.json` with the
-`on-device` driver:
+`on-device` driver, for example:
 
 ```json
 {
@@ -148,9 +152,10 @@ For a test with a host side, port the host test to a driver.
 - `scenarios.json`: the scenarios and the OpenPRoT revision they are built
   from.
 - `build.sh`, `tools/build-scenarios.py`: the build. `bazel/` is a small Bazel
-  module that `build.sh` injects into the OpenPRoT workspace. Its aspect puts
-  an image's boot files in an output group, because `bazel build` of a
-  `caliptra_mcu_image` alone builds only the `.boot_env` file.
+  module that the build passes to Bazel with `--inject_repository`, which adds
+  no file to the OpenPRoT checkout. Its aspect puts an image's boot files in
+  an output group, because `bazel build` of a `caliptra_mcu_image` alone
+  builds only the `.boot_env` file.
 - `emulator/`: the Rust crate. `machine.rs` is the emulator and the driver
   runner, `host.rs` the driver's view of it, `i3c.rs` and `mctp.rs` the host's
   transports, `scenarios/` the drivers, and `lib.rs` the JavaScript API.
@@ -159,21 +164,71 @@ For a test with a host side, port the host test to a driver.
 - `www/`: the page (`index.html`, `app.js`, `style.css`) and the build output.
 - `tests/browser/`: the browser test and its WebDriver BiDi harness.
 
-## Sources
+## Sources and versions
 
-| What | Repository | Revision |
+At the OpenPRoT revision that `scenarios.json` pins (`30b78eeb` on `main`), a
+scenario runs:
+
+- the Caliptra ROM, FMC and runtime built from caliptra-sw's 2.1.3 sources
+  (tag `fw-2.1.3`);
+- the MCU ROM built from caliptra-mcu-sw at tag `rt-sdk-2.1.1`, the Runtime
+  SDK 2.1.1 release;
+- the scenario's OpenPRoT test image as the MCU firmware.
+
+OpenPRoT compiles all of them itself, with Bazel. The caliptra-sw and
+caliptra-mcu-sw revisions are its pins in `third_party/caliptra/versions.bzl`.
+
+| Image | Built from | Source version | Version it reports |
+| --- | --- | --- | --- |
+| Caliptra ROM | chipsalliance/caliptra-sw `b99535de` (tag `fw-2.1.3`) | 2.1.3 | 2.0.0 |
+| Caliptra FMC | chipsalliance/caliptra-sw `b99535de` | 2.1.3 | 0.0.0 |
+| Caliptra runtime | chipsalliance/caliptra-sw `b99535de` | 2.1.3 | 0.0.0 |
+| MCU ROM | chipsalliance/caliptra-mcu-sw `8c9c8ff2` (tag `rt-sdk-2.1.1`) | has none | has none |
+| MCU firmware | [OpenPRoT/openprot](https://github.com/OpenPRoT/openprot) `30b78eeb` | has none | has none |
+
+The OpenPRoT revision identifies the MCU firmware.
+
+The source version of the ROM, the FMC and the runtime is each one's constant
+in caliptra-sw's `builder/src/version.rs` (`ROM_VERSION_*`, `FMC_VERSION_*`
+and `RUNTIME_VERSION_*`).
+
+The version an image reports is a number that the build writes into the
+image. Caliptra copies it to its `CPTRA_FW_REV_ID` registers as each stage
+starts. OpenPRoT's Bazel build does not write those constants. Its ROM packager
+(`third_party/caliptra/caliptra-sw/src/caliptra_rom_packager.rs`, a tool of
+OpenPRoT's) writes 2.0.0, and its firmware bundler writes 0 for the FMC and
+for the runtime, which reads as 0.0.0. The reported version therefore does not
+identify the sources: the ROM that reports 2.0.0 is built from the 2.1.3
+sources.
+
+The Caliptra ROM is not caliptra-sw's released ROM binary. OpenPRoT compiles
+it from the `fw-2.1.3` commit, and caliptra-sw's ROM release tag `rom-2.1.3-1`
+is a different commit.
+
+caliptra-mcu-sw releases its ROM and its runtime separately, as a ROM SDK
+(tags `rom-sdk-*`) and a Runtime SDK (tags `rt-sdk-*`). OpenPRoT pins the
+Runtime SDK 2.1.1 tag and builds the MCU ROM from that revision too. The MCU
+ROM has no version number, and that revision is not a ROM SDK release: it is
+later than ROM SDK 2.1.0 and earlier than ROM SDK 2.1.1. The revision is what
+identifies the MCU ROM.
+
+`build.sh` reads the pins and the source versions from the OpenPRoT checkout.
+The page lists them under "Images and versions", with the versions that
+Caliptra reports during the run.
+
+The emulator, which runs these images, is built from other revisions:
+
+| Part of the emulator | Repository | Revision |
 | --- | --- | --- |
-| Firmware and boot images | [OpenPRoT/openprot](https://github.com/OpenPRoT/openprot) `main` | `30b78eeb` |
-| Caliptra ROM and firmware (built by OpenPRoT) | chipsalliance/caliptra-sw | `b99535de` |
-| MCU ROM (built by OpenPRoT) | chipsalliance/caliptra-mcu-sw `main-2.1` | `8c9c8ff2` |
-| Emulator: MCU model | [swenson/caliptra-mcu-sw](https://github.com/swenson/caliptra-mcu-sw/tree/wasm32-main-2.1-pr2379) `wasm32-main-2.1-pr2379` | `81c58651` |
-| Emulator: Caliptra model | chipsalliance/caliptra-sw `main` | `757b7445` |
+| MCU and subsystem model | [swenson/caliptra-mcu-sw](https://github.com/swenson/caliptra-mcu-sw/tree/wasm32-main-2.1-pr2379) `wasm32-main-2.1-pr2379` | `81c58651` |
+| Caliptra core model | chipsalliance/caliptra-sw `main` | `757b7445` |
 
-The emulator is at the revisions caliptra-wasm uses for Caliptra 2.1, which
-build for wasm32. Its caliptra-mcu-sw revision is 67 commits past the one
-OpenPRoT pins, on the same `main-2.1` branch. OpenPRoT's own tests run the
-same images on the emulator at its pinned revision, so a result here can
-differ from theirs.
+The emulator's revisions are the ones caliptra-wasm uses for Caliptra 2.1,
+which build for wasm32. They do not change the images in the table above. The
+emulator's caliptra-mcu-sw revision is 67 commits after OpenPRoT's pin
+(`8c9c8ff2`), on the same `main-2.1` branch.
+OpenPRoT's own tests run the same images on the emulator at its pin, so a
+result here can differ from theirs.
 
 ## Limits
 
@@ -182,8 +237,8 @@ differ from theirs.
   `//target/veer/tests/ocp_recovery` needs that patch, and this emulator does
   not have it.
 - Caliptra and the MCU print to one UART stream, so lines that they print at
-  the same time interleave. `Host::wait_for_log` also matches a line whose
-  characters have another line's between them.
+  the same time interleave. `Host::wait_for_log` therefore also accepts a
+  line that has characters of another line mixed into it.
 - The `spdm` driver matches the host test at the pinned OpenPRoT revision.
   When the SPDM image gains certificates (OpenPRoT/openprot#762), the driver
   has to follow.

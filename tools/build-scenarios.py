@@ -13,6 +13,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -90,6 +91,68 @@ def git(openprot, *args):
     return subprocess.run(
         ["git", "-C", openprot] + list(args), check=True, text=True, stdout=subprocess.PIPE
     ).stdout.strip()
+
+
+def source_versions(openprot):
+    """The versions of the Caliptra ROM, FMC and runtime sources.
+
+    They are the constants in caliptra-sw's builder/src/version.rs, in the
+    copy of caliptra-sw that Bazel builds from. Returns None if they cannot
+    be read.
+    """
+    try:
+        location = run(
+            ["bazel", "query", "--output=location", "@caliptra_sw//:BUILD.bazel"],
+            cwd=openprot,
+            capture=True,
+        )
+        root = os.path.dirname(location.split(":", 1)[0])
+        with open(os.path.join(root, "builder", "src", "version.rs")) as f:
+            text = f.read()
+        versions = {}
+        for name, prefix in (("rom", "ROM"), ("fmc", "FMC"), ("runtime", "RUNTIME")):
+            parts = [
+                re.search(rf"{prefix}_VERSION_{part}: u\d+ = (\d+);", text).group(1)
+                for part in ("MAJOR", "MINOR", "PATCH")
+            ]
+            versions[name] = ".".join(parts)
+        return versions
+    except (subprocess.CalledProcessError, OSError, AttributeError) as e:
+        print(f"WARNING: could not read the Caliptra source versions: {e}", file=sys.stderr)
+        return None
+
+
+def caliptra_sources(openprot):
+    """The sources OpenPRoT builds the Caliptra ROM and firmware and the MCU ROM from.
+
+    The revisions are OpenPRoT's pins in third_party/caliptra/versions.bzl,
+    and the repositories are the ones extensions.bzl fetches them from.
+    """
+    caliptra = os.path.join(openprot, "third_party", "caliptra")
+    with open(os.path.join(caliptra, "versions.bzl")) as f:
+        pins = f.read()
+    with open(os.path.join(caliptra, "extensions.bzl")) as f:
+        extensions = f.read()
+
+    def pin(key):
+        return re.search(rf'"{key}":\s*"([^"]*)"', pins).group(1)
+
+    def remote(name):
+        return re.search(rf'name = "{name}".*?remote = "([^"]+)"', extensions, re.S).group(1)
+
+    return {
+        "caliptra_sw": {
+            "repo": remote("caliptra_sw"),
+            "rev": pin("caliptra_sw"),
+            "source_versions": source_versions(openprot),
+        },
+        "caliptra_mcu_sw": {
+            "repo": remote("caliptra_mcu_sw"),
+            "rev": pin("caliptra_mcu_sw"),
+            # The caliptra-mcu-sw release that the revision is, if it is one.
+            "release_tag": pin("release_tag"),
+        },
+    }
 
 
 def store(path, images_dir, name):
@@ -171,6 +234,7 @@ def main():
             "pinned_rev": pinned,
             "modified": bool(git(openprot, "status", "--porcelain", "--untracked-files=no")),
         },
+        "caliptra": caliptra_sources(openprot),
         "scenarios": built,
     }
     with open(os.path.join(args.www, "scenarios.json"), "w") as f:

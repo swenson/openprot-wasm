@@ -23,6 +23,7 @@ const errorEl = $("error");
 const stepsEl = $("steps");
 const stepsEmptyEl = $("steps-empty");
 const uartEl = $("uart");
+const imagesBody = $("images").tBodies[0];
 
 // The emulator runs in the page's thread, a batch of cycles per animation
 // frame. The batch is sized so that a frame takes about this long.
@@ -33,6 +34,9 @@ const MAX_BATCH = 2_000_000;
 // The UART pane keeps this many characters.
 const MAX_UART_CHARS = 400_000;
 
+// www/scenarios.json and www/build-info.json.
+let manifest = null;
+let buildInfo = null;
 let scenarios = [];
 let emulator = null;
 let running = false;
@@ -76,13 +80,8 @@ function showError(message) {
 function showScenario() {
   const scenario = selectedScenario();
   descriptionEl.textContent = scenario.description;
-  imageEl.replaceChildren(
-    "Image ",
-    code(scenario.image),
-    `, ${scenario.images.mcu_fw.size.toLocaleString()} bytes. Host driver `,
-    code(scenario.driver),
-    ".",
-  );
+  imageEl.replaceChildren("Host driver ", code(scenario.driver), ".");
+  showImages();
   const url = new URL(location.href);
   url.searchParams.set("scenario", scenario.id);
   history.replaceState(null, "", url);
@@ -99,6 +98,78 @@ function link(href, text) {
   el.href = href;
   el.textContent = text;
   return el;
+}
+
+// -------------------------------------------------------- images and versions
+
+// Caliptra's ROM, FMC and runtime report a version once they have started.
+const REPORTED = ["rom", "fmc", "runtime"];
+
+// A link to a commit, labelled with its short hash.
+function commit(source) {
+  return link(`${source.repo}/commit/${source.rev}`, source.rev.slice(0, 8));
+}
+
+// Adds a row to the table. `reported` names the Caliptra stage whose reported
+// version the row shows, if it shows one.
+function imageRow(name, source, sourceVersion, reported) {
+  const row = imagesBody.insertRow();
+  const head = document.createElement("th");
+  head.scope = "row";
+  head.textContent = name;
+  row.append(head);
+  row.insertCell().append(...source);
+  row.insertCell().textContent = sourceVersion;
+  const cell = row.insertCell();
+  if (reported) cell.id = `version-${reported}`;
+  else cell.textContent = "Has none";
+}
+
+// Lists the images of the selected scenario and the emulator, with the
+// sources they were built from.
+function showImages() {
+  const scenario = selectedScenario();
+  const { caliptra, openprot } = manifest;
+  imagesBody.replaceChildren();
+
+  const stages = { rom: "Caliptra ROM", fmc: "Caliptra FMC", runtime: "Caliptra runtime" };
+  for (const stage of REPORTED) {
+    const version = caliptra.caliptra_sw.source_versions?.[stage] ?? "Not known";
+    imageRow(stages[stage], ["caliptra-sw ", commit(caliptra.caliptra_sw)], version, stage);
+  }
+
+  const mcuRom = ["caliptra-mcu-sw ", commit(caliptra.caliptra_mcu_sw)];
+  if (caliptra.caliptra_mcu_sw.release_tag) mcuRom.push(", tag ", code(caliptra.caliptra_mcu_sw.release_tag));
+  imageRow("MCU ROM", mcuRom, "Has none");
+
+  const firmware = ["OpenPRoT ", commit(openprot)];
+  if (openprot.rev !== openprot.pinned_rev) firmware.push(" (not the pinned revision)");
+  if (openprot.modified) firmware.push(" with local changes");
+  firmware.push(", ", code(scenario.image), `, ${scenario.images.mcu_fw.size.toLocaleString()} bytes`);
+  imageRow("MCU firmware", firmware, "Has none");
+  showVersions(null);
+}
+
+function showEmulatorSources() {
+  if (!buildInfo) return;
+  $("emulator-sources").replaceChildren(
+    "The emulator that runs them is built from caliptra-mcu-sw ",
+    commit(buildInfo.caliptra_mcu_sw),
+    " and caliptra-sw ",
+    commit(buildInfo.caliptra_sw),
+    ".",
+  );
+}
+
+// Fills in the versions Caliptra has reported. `status` is the emulator's
+// status, or null when nothing is running.
+function showVersions(status) {
+  for (const stage of REPORTED) {
+    const cell = $(`version-${stage}`);
+    const version = status?.[`caliptra_${stage}_version`];
+    cell.textContent = version ?? (status ? "Not started yet" : "Shown when the scenario runs");
+    cell.classList.toggle("pending", !version);
+  }
 }
 
 // ---------------------------------------------------------------- host steps
@@ -311,6 +382,7 @@ function frame(id) {
     return;
   }
   showStats(status);
+  showVersions(status);
   if (!finished && status.state !== "running") {
     finish(status);
     return;
@@ -328,6 +400,7 @@ async function start() {
   stepsEl.replaceChildren();
   stepsEmptyEl.hidden = false;
   resetUart();
+  showVersions(null);
   statsEl.textContent = "";
   showError("");
   setStatus("running", "Loading");
@@ -367,28 +440,10 @@ function togglePause() {
 
 // --------------------------------------------------------------------- setup
 
-function showBuildInfo(openprot, emulatorInfo) {
-  const footer = $("build-info");
-  const short = (rev) => rev.slice(0, 8);
-  const commit = (source) => link(`${source.repo}/commit/${source.rev}`, short(source.rev));
-  footer.replaceChildren("Firmware: OpenPRoT ", commit(openprot));
-  if (openprot.rev !== openprot.pinned_rev) footer.append(" (not the pinned revision)");
-  if (openprot.modified) footer.append(" with local changes");
-  if (emulatorInfo) {
-    footer.append(
-      ". Emulator: caliptra-mcu-sw ",
-      commit(emulatorInfo.caliptra_mcu_sw),
-      " and caliptra-sw ",
-      commit(emulatorInfo.caliptra_sw),
-    );
-  }
-  footer.append(".");
-}
-
 async function setup() {
-  let manifest;
   try {
     [manifest] = await Promise.all([fetchJson("scenarios.json"), init()]);
+    buildInfo = await fetchJson("build-info.json").catch(() => null);
   } catch (e) {
     setStatus("failed", "Not built");
     showError(`Could not load the site's build output (run ./build.sh): ${e}`);
@@ -406,7 +461,7 @@ async function setup() {
     scenarioSelect.value = params.get("scenario");
   }
   showScenario();
-  showBuildInfo(manifest.openprot, await fetchJson("build-info.json").catch(() => null));
+  showEmulatorSources();
 
   scenarioSelect.addEventListener("change", () => {
     showScenario();

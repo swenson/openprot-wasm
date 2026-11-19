@@ -50,6 +50,8 @@ const PAGE_STATE = `({
     messages: [...step.querySelectorAll(".message-head")].map((m) => m.textContent),
   })),
   uart: document.getElementById("uart").textContent,
+  versions: ["rom", "fmc", "runtime"].map((stage) => document.getElementById("version-" + stage)?.textContent ?? ""),
+  images: document.getElementById("images").tBodies[0].innerText,
   coloredSpans: document.querySelectorAll('#uart span[class*="ansi-fg-"]').length,
 })`;
 
@@ -118,6 +120,11 @@ async function runScenario(bidi, context, baseUrl, pageErrors, scenario, args) {
   const notPassed = st.steps.filter((s) => s.state !== "passed");
   if (notPassed.length) await fail(`steps not marked passed: ${notPassed.map((s) => s.name).join(", ")}`);
   if (!st.uart.trim()) await fail("no UART output");
+  // The MCU firmware runs only after Caliptra's runtime has started, so the
+  // page has the version of every Caliptra stage by now.
+  const unversioned = st.versions.filter((v) => !/^\d+\.\d+\.\d+$/.test(v));
+  if (unversioned.length) await fail(`Caliptra versions not shown: ${st.versions.join(" | ")}`);
+  if (!st.images.includes(scenario.image)) await fail("the image's label is not listed");
   // OpenPRoT's log lines color the level; the escape sequences must be
   // rendered, not printed.
   if (st.coloredSpans === 0) await fail("no colored text in the UART pane");
@@ -125,7 +132,10 @@ async function runScenario(bidi, context, baseUrl, pageErrors, scenario, args) {
   if (pageErrors.length) await fail("the page logged an error");
   await save();
   const seconds = ((Date.now() - started) / 1000).toFixed(0);
-  console.log(`PASS ${id}: ${st.steps.length} steps in ${seconds} s (${st.stats})`);
+  console.log(
+    `PASS ${id}: ${st.steps.length} steps in ${seconds} s (${st.stats}); ` +
+      `Caliptra reports ROM ${st.versions[0]}, FMC ${st.versions[1]}, runtime ${st.versions[2]}`,
+  );
 }
 
 const args = parseArgs(process.argv.slice(2));

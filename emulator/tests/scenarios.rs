@@ -77,6 +77,12 @@ fn run_scenario(scenario: &serde_json::Value) {
             ),
             State::Passed if passed_at.is_none() => {
                 println!("[{id}] passed after {} cycles", machine.cycles());
+                // The MCU firmware runs only after Caliptra's runtime has
+                // started, so all three versions have been reported.
+                let versions = machine.caliptra_versions();
+                println!("[{id}] Caliptra versions: {versions:?}");
+                assert!(versions.rom.is_some() && versions.fmc.is_some());
+                assert!(versions.runtime.is_some());
                 passed_at = Some(machine.cycles());
             }
             _ => {}

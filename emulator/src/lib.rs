@@ -64,6 +64,11 @@ struct Status {
     cycles: u64,
     mcu_exit_status: Option<i32>,
     fatal_error: Option<u32>,
+    /// The versions Caliptra reports: the ROM's once the ROM has started,
+    /// the others once the runtime is ready. `null` before that.
+    caliptra_rom_version: Option<String>,
+    caliptra_fmc_version: Option<String>,
+    caliptra_runtime_version: Option<String>,
 }
 
 /// The emulated subsystem running one scenario.
@@ -127,19 +132,25 @@ impl Emulator {
     }
 
     /// The state of the run as JSON: `state` ("running", "passed" or
-    /// "failed"), `error`, `cycles`, `mcu_exit_status` and `fatal_error`.
+    /// "failed"), `error`, `cycles`, `mcu_exit_status`, `fatal_error`, and
+    /// the versions Caliptra has reported (`caliptra_rom_version`,
+    /// `caliptra_fmc_version`, `caliptra_runtime_version`).
     pub fn status(&self) -> String {
         let (state, error) = match self.machine.state() {
             State::Running => ("running", None),
             State::Passed => ("passed", None),
             State::Failed(e) => ("failed", Some(e.clone())),
         };
+        let versions = self.machine.caliptra_versions();
         let status = Status {
             state,
             error,
             cycles: self.machine.cycles(),
             mcu_exit_status: self.machine.mcu_exit_status(),
             fatal_error: self.machine.fatal_error(),
+            caliptra_rom_version: versions.rom,
+            caliptra_fmc_version: versions.fmc,
+            caliptra_runtime_version: versions.runtime,
         };
         serde_json::to_string(&status).unwrap_or_default()
     }
