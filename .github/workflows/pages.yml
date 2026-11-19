@@ -1,0 +1,138 @@
+# Licensed under the Apache-2.0 license
+#
+# Build the site and test it. A push to main then publishes it to the gh-pages
+# branch, which GitHub Pages serves. A pull request is built and tested only.
+name: Build, test and publish
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One publish at a time. A run in progress finishes before the next starts.
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  WASM_PACK_VERSION: 0.15.1
+
+jobs:
+  build:
+    name: Build and test
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Read the OpenPRoT pin
+        id: openprot
+        run: |
+          echo "rev=$(python3 -c 'import json; print(json.load(open("scenarios.json"))["openprot"]["rev"])')" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Bazel
+        # The firmware is built in an OpenPRoT checkout, with the Bazel
+        # version that checkout names. The caches are kept per OpenPRoT
+        # revision.
+        uses: bazel-contrib/setup-bazel@f34d6a05eae3c24acab7fa54587492daeaeffdab # 0.19.2
+        with:
+          bazelisk-cache: true
+          disk-cache: openprot-${{ steps.openprot.outputs.rev }}
+          repository-cache: true
+
+      - name: Install the Rust toolchain
+        # emulator/rust-toolchain.toml names the toolchain and its targets.
+        run: cd emulator && rustup toolchain install
+
+      - name: Cache cargo downloads and wasm-pack
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.cargo/bin/wasm-pack
+            ~/.cache/.wasm-pack
+          key: cargo-${{ runner.os }}-wasm-pack-${{ env.WASM_PACK_VERSION }}-${{ hashFiles('emulator/Cargo.lock') }}
+          restore-keys: |
+            cargo-${{ runner.os }}-wasm-pack-${{ env.WASM_PACK_VERSION }}-
+
+      - name: Install wasm-pack
+        run: |
+          if [ "$(wasm-pack --version 2>/dev/null)" != "wasm-pack $WASM_PACK_VERSION" ]; then
+            cargo install wasm-pack --version "$WASM_PACK_VERSION" --locked --force
+          fi
+
+      - name: Build the site
+        env:
+          # The OpenPRoT checkout must be outside this repository.
+          OPENPROT_CACHE_DIR: ${{ runner.temp }}/openprot-wasm
+        run: ./build.sh
+
+      - name: Lint
+        working-directory: emulator
+        run: |
+          cargo fmt --check
+          cargo clippy --all-targets -- -D warnings
+          cargo clippy --target wasm32-unknown-unknown -- -D warnings
+
+      - name: Host tests
+        # Runs every built scenario on the emulator, natively.
+        working-directory: emulator
+        run: cargo test
+
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+
+      - name: Browser test
+        # Runs every scenario through the page in headless Firefox, which the
+        # runner has installed.
+        run: node tests/browser/scenario-test.mjs --out "$RUNNER_TEMP/browser-test"
+
+      - name: Upload the browser test's output
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: browser-test
+          path: ${{ runner.temp }}/browser-test
+          if-no-files-found: ignore
+
+      - name: Upload the site
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: site
+          path: www
+          include-hidden-files: true
+          if-no-files-found: error
+
+  publish:
+    name: Publish to gh-pages
+    needs: build
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      # To push the gh-pages branch.
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Download the site
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: site
+          path: www
+
+      - name: Publish
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          ./tools/publish-pages.sh --push

@@ -93,7 +93,14 @@ module) and `build-info.json` (the emulator's sources).
 ## Publishing
 
 The site is at <https://swenson.github.io/openprot-wasm/>, served by GitHub
-Pages from the `gh-pages` branch. To publish the site as built in `www/`:
+Pages from the `gh-pages` branch.
+
+A push to `main` publishes it. The workflow in `.github/workflows/pages.yml`
+builds the site, runs the host tests and the browser test, and commits the
+contents of `www/` to `gh-pages`. It also builds and tests every pull request,
+without publishing.
+
+To publish a local build by hand:
 
 ```sh
 ./build.sh
@@ -180,6 +187,7 @@ For a test with a host side, port the host test to a driver.
   build for wasm32.
 - `www/`: the page (`index.html`, `app.js`, `style.css`) and the build output.
 - `tests/browser/`: the browser test and its WebDriver BiDi harness.
+- `.github/workflows/pages.yml`: builds, tests and publishes the site.
 
 ## Sources and versions
 
