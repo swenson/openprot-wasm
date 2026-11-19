@@ -92,19 +92,13 @@ module) and `build-info.json` (the emulator's sources).
 
 ## Publishing
 
-The site is at <https://swenson.github.io/openprot-wasm/>, served by GitHub
-Pages from the `gh-pages` branch. To publish the site as built in `www/`:
+The site is at <https://swenson.github.io/openprot-wasm/>, on GitHub Pages.
 
-```sh
-./build.sh
-node tests/browser/scenario-test.mjs
-./tools/publish-pages.sh --push
-```
-
-`publish-pages.sh` commits the contents of `www/` to the local `gh-pages`
-branch, on top of the published one, and with `--push` pushes it to `origin`.
-It refuses to publish firmware that was built from an OpenPRoT checkout with
-local changes.
+A push to `main` publishes it. The workflow in `.github/workflows/pages.yml`
+builds the site, runs the host tests and the browser test, and deploys `www/`
+to GitHub Pages. It also builds and tests every pull request, without
+deploying. The repository's Pages source is set to GitHub Actions, and its
+`github-pages` environment allows deployments from `main`.
 
 ## Testing
 
@@ -167,8 +161,7 @@ For a test with a host side, port the host test to a driver.
 
 - `scenarios.json`: the scenarios and the OpenPRoT revision they are built
   from.
-- `build.sh`, `tools/build-scenarios.py`: the build. `tools/publish-pages.sh`
-  publishes its output. `bazel/` is a small Bazel
+- `build.sh`, `tools/build-scenarios.py`: the build. `bazel/` is a small Bazel
   module that the build passes to Bazel with `--inject_repository`, which adds
   no file to the OpenPRoT checkout. Its aspect puts an image's boot files in
   an output group, because `bazel build` of a `caliptra_mcu_image` alone
@@ -180,6 +173,7 @@ For a test with a host side, port the host test to a driver.
   build for wasm32.
 - `www/`: the page (`index.html`, `app.js`, `style.css`) and the build output.
 - `tests/browser/`: the browser test and its WebDriver BiDi harness.
+- `.github/workflows/pages.yml`: builds, tests and deploys the site.
 
 ## Sources and versions
 
