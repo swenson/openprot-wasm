@@ -310,6 +310,44 @@ footer code {
   overflow-wrap: anywhere;
 }
 
+/* ANSI colors of the UART console: 0 to 7 are black, red, green, yellow, blue,
+ * magenta, cyan and white, and 8 to 15 their bright forms. Black is a gray
+ * that shows on the console's background. */
+.ansi-bold {
+  font-weight: 700;
+}
+
+.ansi-dim {
+  opacity: 0.75;
+}
+
+.ansi-fg-0 { color: #7d8794; }
+.ansi-fg-1 { color: #f47067; }
+.ansi-fg-2 { color: #6bc46d; }
+.ansi-fg-3 { color: #e0b454; }
+.ansi-fg-4 { color: #6cb6ff; }
+.ansi-fg-5 { color: #d38cf0; }
+.ansi-fg-6 { color: #56c8d8; }
+.ansi-fg-7 { color: #d4d9e0; }
+.ansi-fg-8 { color: #9aa4b0; }
+.ansi-fg-9 { color: #ff938a; }
+.ansi-fg-10 { color: #8ddb8c; }
+.ansi-fg-11 { color: #f5d77e; }
+.ansi-fg-12 { color: #96d0ff; }
+.ansi-fg-13 { color: #e2b3ff; }
+.ansi-fg-14 { color: #86e1ee; }
+.ansi-fg-15 { color: #ffffff; }
+
+.ansi-bg-0 { background: #1c2129; }
+.ansi-bg-1, .ansi-bg-9 { background: #8e2a2f; }
+.ansi-bg-2, .ansi-bg-10 { background: #23602c; }
+.ansi-bg-3, .ansi-bg-11 { background: #6d5412; }
+.ansi-bg-4, .ansi-bg-12 { background: #1f4e8c; }
+.ansi-bg-5, .ansi-bg-13 { background: #6a3a86; }
+.ansi-bg-6, .ansi-bg-14 { background: #1c5f69; }
+.ansi-bg-7, .ansi-bg-15 { background: #59636e; }
+.ansi-bg-8 { background: #3a4350; }
+
 footer {
   color: var(--muted);
   font-size: 13px;

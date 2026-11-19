@@ -156,9 +156,70 @@ function showEvents(events) {
 
 // ---------------------------------------------------------------------- UART
 
+// OpenPRoT's log lines carry ANSI SGR escape sequences (pw_log colors the
+// level: dim, bold and the eight foreground colors). The pane renders those,
+// plus the bright and background colors, as classes on spans; style.css has
+// the palette. Other escape sequences are dropped.
+
 // The end of the last chunk of UART output, if it stopped inside an escape
 // sequence.
 let uartPartial = "";
+// The style that the escape sequences so far have selected.
+let uartStyle = { bold: false, dim: false, fg: null, bg: null };
+// How many characters the pane holds.
+let uartChars = 0;
+
+function resetUart() {
+  uartEl.replaceChildren();
+  uartPartial = "";
+  uartStyle = { bold: false, dim: false, fg: null, bg: null };
+  uartChars = 0;
+}
+
+// Applies the parameters of one SGR sequence ("2;36" of ESC[2;36m).
+function applySgr(params) {
+  const codes = params === "" ? [0] : params.split(";").map(Number);
+  for (let i = 0; i < codes.length; i++) {
+    const code = codes[i];
+    if (code === 0) uartStyle = { bold: false, dim: false, fg: null, bg: null };
+    else if (code === 1) uartStyle.bold = true;
+    else if (code === 2) uartStyle.dim = true;
+    else if (code === 22) uartStyle.bold = uartStyle.dim = false;
+    else if (code >= 30 && code <= 37) uartStyle.fg = code - 30;
+    else if (code >= 90 && code <= 97) uartStyle.fg = code - 90 + 8;
+    else if (code === 39) uartStyle.fg = null;
+    else if (code >= 40 && code <= 47) uartStyle.bg = code - 40;
+    else if (code >= 100 && code <= 107) uartStyle.bg = code - 100 + 8;
+    else if (code === 49) uartStyle.bg = null;
+    // 256-color and RGB colors are not rendered; skip their arguments.
+    else if (code === 38 || code === 48) i += codes[i + 1] === 5 ? 2 : codes[i + 1] === 2 ? 4 : 0;
+  }
+}
+
+function uartClass() {
+  const classes = [];
+  if (uartStyle.bold) classes.push("ansi-bold");
+  if (uartStyle.dim) classes.push("ansi-dim");
+  if (uartStyle.fg !== null) classes.push(`ansi-fg-${uartStyle.fg}`);
+  if (uartStyle.bg !== null) classes.push(`ansi-bg-${uartStyle.bg}`);
+  return classes.join(" ");
+}
+
+// Adds text to the pane in the current style.
+function appendUartText(text) {
+  // Keep printable text: the firmware's exit status arrives as a raw byte.
+  text = text.replace(/[^\x20-\x7e\n\t]/g, "");
+  if (!text) return;
+  const className = uartClass();
+  let span = uartEl.lastElementChild;
+  if (!span || span.className !== className) {
+    span = document.createElement("span");
+    span.className = className;
+    uartEl.append(span);
+  }
+  span.append(text);
+  uartChars += text.length;
+}
 
 function appendUart(text) {
   if (!text) return;
@@ -169,14 +230,29 @@ function appendUart(text) {
     uartPartial = partial[0];
     text = text.slice(0, partial.index);
   }
-  // Drop the log's color codes, then keep printable text: the firmware's
-  // exit status arrives as a raw byte.
-  text = text.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "").replace(/[^\x20-\x7e\n\t]/g, "");
   const atBottom = uartEl.scrollHeight - uartEl.scrollTop - uartEl.clientHeight < 40;
-  uartEl.append(text);
-  uartEl.normalize();
-  const excess = uartEl.textContent.length - MAX_UART_CHARS;
-  if (excess > 0) uartEl.textContent = uartEl.textContent.slice(excess);
+
+  let last = 0;
+  for (const sequence of text.matchAll(/\x1b\[([0-9;]*)([A-Za-z])/g)) {
+    appendUartText(text.slice(last, sequence.index));
+    if (sequence[2] === "m") applySgr(sequence[1]);
+    last = sequence.index + sequence[0].length;
+  }
+  appendUartText(text.slice(last));
+
+  // Drop the oldest output beyond what the pane keeps.
+  while (uartChars > MAX_UART_CHARS) {
+    const first = uartEl.firstElementChild;
+    const excess = uartChars - MAX_UART_CHARS;
+    const length = first.textContent.length;
+    if (length <= excess) {
+      first.remove();
+      uartChars -= length;
+    } else {
+      first.textContent = first.textContent.slice(excess);
+      uartChars -= excess;
+    }
+  }
   if (atBottom) uartEl.scrollTop = uartEl.scrollHeight;
 }
 
@@ -251,8 +327,7 @@ async function start() {
   currentStep = null;
   stepsEl.replaceChildren();
   stepsEmptyEl.hidden = false;
-  uartEl.textContent = "";
-  uartPartial = "";
+  resetUart();
   statsEl.textContent = "";
   showError("");
   setStatus("running", "Loading");

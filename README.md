@@ -35,7 +35,8 @@ The two drivers:
   has more of them. The eight in the table are the ones run here so far.
 
 The page shows the driver's steps, the messages it exchanges, and the UART
-output of Caliptra and the MCU. `?scenario=<id>` selects a scenario and `&run`
+output of Caliptra and the MCU, with the ANSI colors of OpenPRoT's log lines.
+`?scenario=<id>` selects a scenario and `&run`
 starts it, e.g. `http://localhost:8080/?scenario=spdm&run`.
 
 ## How it works

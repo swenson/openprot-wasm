@@ -50,6 +50,7 @@ const PAGE_STATE = `({
     messages: [...step.querySelectorAll(".message-head")].map((m) => m.textContent),
   })),
   uart: document.getElementById("uart").textContent,
+  coloredSpans: document.querySelectorAll('#uart span[class*="ansi-fg-"]').length,
 })`;
 
 async function runScenario(bidi, context, baseUrl, pageErrors, scenario, args) {
@@ -117,6 +118,10 @@ async function runScenario(bidi, context, baseUrl, pageErrors, scenario, args) {
   const notPassed = st.steps.filter((s) => s.state !== "passed");
   if (notPassed.length) await fail(`steps not marked passed: ${notPassed.map((s) => s.name).join(", ")}`);
   if (!st.uart.trim()) await fail("no UART output");
+  // OpenPRoT's log lines color the level; the escape sequences must be
+  // rendered, not printed.
+  if (st.coloredSpans === 0) await fail("no colored text in the UART pane");
+  if (/\x1b|\[\d+(;\d+)*m/.test(st.uart)) await fail("an escape sequence was printed in the UART pane");
   if (pageErrors.length) await fail("the page logged an error");
   await save();
   const seconds = ((Date.now() - started) / 1000).toFixed(0);
