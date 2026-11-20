@@ -13,6 +13,7 @@ of the test that OpenPRoT runs on the host, here compiled into the page.
 | Id | Scenario | Image | Host driver |
 | --- | --- | --- | --- |
 | `spdm` | SPDM responder | `//target/veer/tests/spdm:spdm_image` | `spdm` |
+| `pldm` | PLDM firmware update | `//target/veer/tests/pldm:pldm_image` | `pldm` |
 | `flash` | Flash driver | `//target/veer/tests/flash:flash` | `on-device` |
 | `flash-service` | Flash service | `//target/veer/tests/flash_service:flash_service` | `on-device` |
 | `sha` | SHA driver | `//target/veer/tests/sha:sha` | `on-device` |
@@ -22,7 +23,7 @@ of the test that OpenPRoT runs on the host, here compiled into the page.
 | `mci` | MCI driver | `//target/veer/tests/mci:mci` | `on-device` |
 | `handoff` | ROM handoff table | `//target/veer/tests/handoff:handoff` | `on-device` |
 
-The two drivers:
+The three drivers:
 
 - `spdm` is an SPDM requester. It follows OpenPRoT's
   `target/veer/tests/spdm/host_test.rs`: it sends `GET_VERSION`,
@@ -42,6 +43,26 @@ The two drivers:
   IDevID issues the LDevID certificate, and the chain has no IDevID
   certificate, so it has no key to check the LDevID certificate's signature
   with. The page shows that signature as not checked.
+- `pldm` is a PLDM update agent. It follows OpenPRoT's
+  `target/veer/tests/pldm/host_test.rs`. The update is the SoC manifest and
+  the MCU firmware of a second image, `//target/veer/tests/pldm/updated`.
+  The driver reads the device's identifiers and firmware parameters, starts
+  the update (`RequestUpdate`, `PassComponentTable`), and for each of the
+  two components sends `UpdateComponent` and answers the device's
+  `RequestFirmwareData` requests until the device reports
+  `TransferComplete`, `VerifyComplete` and `ApplyComplete`. It then sends
+  `ActivateFirmware` and waits for the second image to run.
+
+  The device stages the components in memory that Caliptra can read. Caliptra
+  checks the signatures of the manifest, and the device checks the firmware
+  against the digest in the manifest. To activate the update, the device
+  gives Caliptra the manifest and asks it to activate the firmware. Caliptra
+  resets the MCU, copies the firmware to MCU SRAM, authorizes it against the
+  manifest and releases the MCU. The second image passes if it finds that
+  the MCU was reset for a hitless update.
+
+  The page shows a transfer as a progress bar and lists the first
+  `RequestFirmwareData` exchange of each component.
 - `on-device` boots an image that tests itself and waits for it to exit with
   PASS or FAIL. OpenPRoT runs such images with `caliptra_on_device_test` and
   has more of them. The eight `on-device` scenarios in the table are the ones
@@ -145,10 +166,10 @@ changes, run `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`
 and `cargo clippy --target wasm32-unknown-unknown -- -D warnings` in
 `emulator/`.
 
-All nine scenarios pass on the host and in Firefox. A scenario runs for 14 to
-26 million emulated cycles. Headless Firefox ran 0.4 to 0.5 million cycles
-per second on the machine this was developed on, and a scenario took 30 to 70
-seconds.
+All ten scenarios pass on the host and in Firefox. A scenario runs for 14 to
+26 million emulated cycles, and `pldm` for 45 million. Headless Firefox ran
+0.3 to 0.5 million cycles per second on the machine this was developed on. A
+scenario took 30 to 70 seconds, and `pldm` 135 seconds.
 
 ## Adding a scenario
 
@@ -165,7 +186,10 @@ For an image that tests itself, add an entry to `scenarios.json` with the
 }
 ```
 
-`image` is the label of a `veer_system_image` or `veer_unittest_image`.
+`image` is the label of a `veer_system_image` or `veer_unittest_image`. A
+scenario can also name an `update_image`. `build.sh` then builds that image
+too, and the driver gets its SoC manifest and its MCU firmware from
+`host.update_images()`.
 
 For a test with a host side, port the host test to a driver.
 `emulator/src/scenarios/spdm.rs` is an example.
@@ -176,9 +200,12 @@ For a test with a host side, port the host test to a driver.
 2. The page lists a driver's progress as named steps. Call `host.step(name)`
    when the driver starts one, `host.note(...)` to remark on it, and
    `host.message(...)` for each message sent or received.
+   `host.progress(...)` shows how far a transfer is, and
    `host.certificate(...)` shows a certificate that `x509::describe` has
    parsed. An `Err` fails the step the driver is in.
-3. Use `MctpHost` (`emulator/src/mctp.rs`) to exchange MCTP messages, or
+3. Use `MctpHost` (`emulator/src/mctp.rs`) to exchange MCTP messages
+   (`request` sends a request, `receive_request` and `respond` answer one
+   that the device sends), or
    `I3cHost` for raw I3C transfers. `host.with_model(...)` gives the hardware
    model for anything else (mailboxes, MCI registers).
 4. Name the driver in the scenario's entry in `scenarios.json`.
@@ -204,7 +231,8 @@ For a test with a host side, port the host test to a driver.
 
 ## Sources and versions
 
-At the OpenPRoT revision that `scenarios.json` pins (`c7af5ac3` on `main`), a
+At the OpenPRoT revision that `scenarios.json` pins (`d0d5bded`, the commit of
+[OpenPRoT/openprot#769](https://github.com/OpenPRoT/openprot/pull/769)), a
 scenario runs:
 
 - the Caliptra ROM, FMC and runtime built from caliptra-sw's 2.1.3 sources
@@ -222,7 +250,7 @@ caliptra-mcu-sw revisions are its pins in `third_party/caliptra/versions.bzl`.
 | Caliptra FMC | chipsalliance/caliptra-sw `b99535de` | 2.1.3 |
 | Caliptra runtime | chipsalliance/caliptra-sw `b99535de` | 2.1.3 |
 | MCU ROM | chipsalliance/caliptra-mcu-sw `8c9c8ff2` (tag `rt-sdk-2.1.1`) | has none |
-| MCU firmware | [OpenPRoT/openprot](https://github.com/OpenPRoT/openprot) `c7af5ac3` | has none |
+| MCU firmware | [OpenPRoT/openprot](https://github.com/OpenPRoT/openprot) `d0d5bded` | has none |
 
 The OpenPRoT revision identifies the MCU firmware.
 
@@ -273,4 +301,10 @@ result here can differ from theirs.
   When that test changes, the driver has to follow.
 - OpenPRoT's other host-driven VeeR tests have no driver yet: `mctp_i3c`,
   `i3c_service`, `rx_timing`, `mcu_mbox`, `runtime` and `ocp_recovery`.
-- OpenPRoT has no firmware update test for VeeR at the pinned revision.
+- `scenarios.json` pins the commit of
+  [OpenPRoT/openprot#769](https://github.com/OpenPRoT/openprot/pull/769), an
+  open pull request that adds `//target/veer/tests/pldm`. The pin moves to
+  OpenPRoT's `main` when the pull request merges.
+- The firmware device of the `pldm` scenario stages the update in the
+  emulator's external test SRAM, which no hardware has. The driver sends the
+  two components as they are, not as a PLDM firmware update package.

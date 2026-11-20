@@ -351,6 +351,24 @@ button:disabled {
   overflow-wrap: anywhere;
 }
 
+.progress {
+  margin: 6px 0;
+}
+
+.progress-label {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.progress progress {
+  display: block;
+  width: 100%;
+  max-width: 420px;
+  height: 8px;
+  margin-top: 3px;
+  accent-color: var(--accent);
+}
+
 .certificate {
   margin: 8px 0;
   padding: 10px 12px;

@@ -12,7 +12,7 @@ use mcu_hw_model::{Fuses, InitParams, McuHwModel, ModelEmulated};
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 
-use crate::host::{exit_status, Event, Host, Shared};
+use crate::host::{exit_status, Event, Host, Shared, UpdateImages};
 use crate::scenarios::{self, ScenarioFuture};
 
 /// The driver is polled after every this many cycles.
@@ -31,6 +31,10 @@ pub struct BootImages<'a> {
     pub mcu_fw: &'a [u8],
     /// SHA-384 of the vendor public keys that signed the Caliptra firmware.
     pub vendor_pk_hash: [u8; 48],
+    /// The SoC manifest and the MCU firmware of the scenario's firmware
+    /// update, if it has one: the boot files of a second image, which the
+    /// driver sends to the first.
+    pub update: Option<(&'a [u8], &'a [u8])>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -109,6 +113,10 @@ impl Machine {
 
         let shared = Rc::new(Shared {
             model: RefCell::new(model),
+            update: images.update.map(|(soc_manifest, mcu_fw)| UpdateImages {
+                soc_manifest: soc_manifest.into(),
+                mcu_fw: mcu_fw.into(),
+            }),
             log: RefCell::new(Vec::new()),
             events: RefCell::new(Vec::new()),
             slice: Cell::new(0),

@@ -85,7 +85,10 @@ impl Emulator {
     /// * `mcu_fw` - The MCU firmware: the OpenPRoT image
     /// * `vendor_pk_hash` - The vendor PK hash, 96 hex digits
     /// * `driver` - The name of the scenario driver (see `drivers`)
+    /// * `update_soc_manifest`, `update_mcu_fw` - The SoC manifest and the
+    ///   MCU firmware of the scenario's firmware update, if it has one
     #[wasm_bindgen(constructor)]
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         caliptra_rom: &[u8],
         caliptra_fw: &[u8],
@@ -94,6 +97,8 @@ impl Emulator {
         mcu_fw: &[u8],
         vendor_pk_hash: &str,
         driver: &str,
+        update_soc_manifest: Option<Vec<u8>>,
+        update_mcu_fw: Option<Vec<u8>>,
     ) -> Result<Emulator, JsValue> {
         console_error_panic_hook::set_once();
         let images = BootImages {
@@ -104,6 +109,7 @@ impl Emulator {
             mcu_fw,
             vendor_pk_hash: parse_vendor_pk_hash(vendor_pk_hash)
                 .map_err(|e| JsValue::from_str(&e))?,
+            update: update_soc_manifest.as_deref().zip(update_mcu_fw.as_deref()),
         };
         let machine = Machine::new(&images, driver).map_err(|e| JsValue::from_str(&e))?;
         Ok(Emulator { machine })
@@ -122,7 +128,8 @@ impl Emulator {
     /// The events the driver has reported since the last call, as a JSON
     /// array. Each has a `cycle` and a `kind`: `step` (with `name`), `note`
     /// (with `text`), `message` (with `direction`, `protocol`, `name` and
-    /// `bytes` in hex) or `certificate` (with `name` and `certificate`, an
+    /// `bytes` in hex), `progress` (with `name`, `done` and `total`) or
+    /// `certificate` (with `name` and `certificate`, an
     /// [`x509::CertificateInfo`]).
     pub fn take_events(&mut self) -> String {
         serde_json::to_string(&self.machine.take_events()).unwrap_or_default()
@@ -173,5 +180,6 @@ mod tests {
             .collect();
         assert!(names.contains(&"spdm"));
         assert!(names.contains(&"on-device"));
+        assert!(names.contains(&"pldm"));
     }
 }

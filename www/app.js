@@ -139,6 +139,12 @@ function showImages() {
   if (openprot.modified) firmware.push(" with local changes");
   firmware.push(", ", code(scenario.image), `, ${scenario.images.mcu_fw.size.toLocaleString()} bytes`);
   imageRow("MCU firmware", firmware, "Has none");
+
+  if (scenario.update) {
+    const size = scenario.update.mcu_fw.size.toLocaleString();
+    const updated = ["OpenPRoT ", commit(openprot), ", ", code(scenario.update.image), `, ${size} bytes`];
+    imageRow("MCU firmware of the update", updated, "Has none");
+  }
 }
 
 function showEmulatorSources() {
@@ -332,10 +338,30 @@ function addCertificate(event) {
   );
 }
 
+// A bar for how far a transfer is. A later event with the same name in the
+// same step moves the bar that the first one added.
+function showProgress(event) {
+  if (!currentStep) return;
+  const bars = [...currentStep.querySelectorAll(".progress")];
+  let bar = bars.find((node) => node.dataset.name === event.name);
+  if (!bar) {
+    bar = el("div", "progress", el("div", "progress-label"), document.createElement("progress"));
+    bar.dataset.name = event.name;
+    addToStep(bar);
+  }
+  const done = event.done.toLocaleString();
+  const total = event.total.toLocaleString();
+  bar.querySelector(".progress-label").textContent = `${event.name}: ${done} of ${total} bytes`;
+  const meter = bar.querySelector("progress");
+  meter.max = event.total;
+  meter.value = event.done;
+}
+
 function showEvents(events) {
   for (const event of events) {
     if (event.kind === "step") addStep(event);
     else if (event.kind === "note") addNote(event.text);
+    else if (event.kind === "progress") showProgress(event);
     else if (event.kind === "message") addMessage(event);
     else if (event.kind === "certificate") addCertificate(event);
   }
@@ -525,9 +551,15 @@ async function start() {
   const scenario = selectedScenario();
   try {
     const names = ["caliptra_rom", "caliptra_fw", "soc_manifest", "mcu_rom", "mcu_fw"];
-    const images = await Promise.all(names.map((name) => fetchImage(scenario.images[name])));
+    // A scenario with a firmware update also has the SoC manifest and the
+    // MCU firmware that its driver sends to the device.
+    const update = scenario.update ? [scenario.update.soc_manifest, scenario.update.mcu_fw] : [];
+    const [images, updateImages] = await Promise.all([
+      Promise.all(names.map((name) => fetchImage(scenario.images[name]))),
+      Promise.all(update.map(fetchImage)),
+    ]);
     if (id !== runId) return;
-    emulator = new Emulator(...images, scenario.vendor_pk_hash, scenario.driver);
+    emulator = new Emulator(...images, scenario.vendor_pk_hash, scenario.driver, ...updateImages);
   } catch (e) {
     if (id === runId) fail(`Could not start the scenario: ${e}`);
     return;
