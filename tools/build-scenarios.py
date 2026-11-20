@@ -4,7 +4,9 @@
 
 For each scenario this builds `<image>_image_emulator` in an OpenPRoT
 checkout: the image signed for the emulator, with the Caliptra ROM and
-firmware, the MCU ROM and the SoC manifest that boot it. The files are copied
+firmware, the MCU ROM and the SoC manifest that boot it. For a scenario with
+an `update_image` it also builds that image, whose MCU firmware and SoC
+manifest the scenario's driver sends to the first image. The files are copied
 to www/images/, named by content so that scenarios share what is the same,
 and www/scenarios.json lists them for the page and the tests.
 """
@@ -184,7 +186,13 @@ def main():
             sys.exit(f"no scenario named {', '.join(unknown)} (have: {', '.join(sorted(known))})")
         scenarios = [s for s in scenarios if s["id"] in args.only]
 
-    targets = [emulator_target(s["image"]) for s in scenarios]
+    # A scenario with a firmware update also has the image that the update
+    # installs.
+    targets = []
+    for scenario in scenarios:
+        targets.append(emulator_target(scenario["image"]))
+        if "update_image" in scenario:
+            targets.append(emulator_target(scenario["update_image"]))
     build(openprot, targets)
     files = runfiles(openprot, targets)
     execroot = run(["bazel", "info", "execution_root"], cwd=openprot, capture=True).strip()
@@ -193,14 +201,15 @@ def main():
     shutil.rmtree(images_dir, ignore_errors=True)
     os.makedirs(images_dir)
 
-    built = []
-    for scenario, target in zip(scenarios, targets):
+    def boot_files(target, keys):
+        """Stores the boot files of `target` that `keys` names. Returns them and the .boot_env."""
         by_short_path = files[target]
         boot_env_path = next(p for p in by_short_path.values() if p.endswith(".boot_env"))
         with open(os.path.join(execroot, boot_env_path)) as f:
             boot_env = json.load(f)
         images = {}
-        for key, name in BOOT_ENV_IMAGES.items():
+        for key in keys:
+            name = BOOT_ENV_IMAGES[key]
             # An rlocation path: the workspace name, then the short path.
             short_path = boot_env[key].split("/", 1)[1]
             path = os.path.join(execroot, by_short_path[short_path])
@@ -210,17 +219,28 @@ def main():
                     "different configurations; check BAZEL_FLAGS against OpenPRoT's .bazelrc."
                 )
             images[name] = store(path, images_dir, name.replace("_", "-"))
-        built.append(
-            {
-                "id": scenario["id"],
-                "title": scenario["title"],
-                "description": scenario["description"],
-                "driver": scenario["driver"],
-                "image": scenario["image"],
-                "vendor_pk_hash": boot_env["VENDOR_PK_HASH"],
-                "images": images,
-            }
-        )
+        return images, boot_env
+
+    built = []
+    for scenario in scenarios:
+        images, boot_env = boot_files(emulator_target(scenario["image"]), BOOT_ENV_IMAGES)
+        entry = {
+            "id": scenario["id"],
+            "title": scenario["title"],
+            "description": scenario["description"],
+            "driver": scenario["driver"],
+            "image": scenario["image"],
+            "vendor_pk_hash": boot_env["VENDOR_PK_HASH"],
+            "images": images,
+        }
+        if "update_image" in scenario:
+            # The driver sends the update's MCU firmware and the SoC manifest
+            # that authorizes it.
+            update, _ = boot_files(
+                emulator_target(scenario["update_image"]), ("SOC_MANIFEST", "MCU_FW")
+            )
+            entry["update"] = {"image": scenario["update_image"], **update}
+        built.append(entry)
         print(f"{scenario['id']}: MCU firmware {images['mcu_fw']['size']} bytes", file=sys.stderr)
 
     rev = git(openprot, "rev-parse", "HEAD")

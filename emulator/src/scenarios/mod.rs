@@ -15,6 +15,7 @@ use std::pin::Pin;
 use crate::host::Host;
 
 mod on_device;
+mod pldm;
 mod spdm;
 
 /// A running driver. It resolves when the scenario has passed or failed.
@@ -29,7 +30,7 @@ pub struct Driver {
     pub start: fn(Host) -> ScenarioFuture,
 }
 
-pub const DRIVERS: &[Driver] = &[on_device::DRIVER, spdm::DRIVER];
+pub const DRIVERS: &[Driver] = &[on_device::DRIVER, pldm::DRIVER, spdm::DRIVER];
 
 pub fn find(name: &str) -> Option<&'static Driver> {
     DRIVERS.iter().find(|driver| driver.name == name)

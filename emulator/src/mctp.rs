@@ -9,15 +9,22 @@ use crate::i3c::I3cHost;
 /// The MCTP transport header: version, destination EID, source EID, flags.
 const HEADER_LEN: usize = 4;
 
-/// The most message bytes the host puts in one packet: the MCTP baseline
-/// transmission unit. OpenPRoT's host tests send the same.
-const MAX_PACKET_BODY: usize = 64;
+/// The most message bytes the host puts in one packet unless a driver asks
+/// for more: the MCTP baseline transmission unit. OpenPRoT's host tests that
+/// also run on the FPGA send the same.
+const BASELINE_PACKET_BODY: usize = 64;
+
+/// The most message bytes that fit in one packet: with the transport header
+/// and the PEC, the packet fills the 256-byte receive FIFO of the device's
+/// I3C target but for one byte.
+const MAX_PACKET_BODY: usize = 250;
 
 /// The largest packet the device sends, header included.
 const MAX_REPLY_PACKET: usize = 254;
 
 /// Cycles to let the device drain one packet from its receive FIFO before
-/// the next is written.
+/// the next is written, unless a driver asks for another gap. OpenPRoT's
+/// host tests wait at least as long.
 const WRITE_GAP_CYCLES: u64 = 150_000;
 
 /// Cycles to wait for each packet of a response.
@@ -38,6 +45,19 @@ pub struct MctpHost {
     device_eid: u8,
     /// The tag of the next request.
     tag: u8,
+    /// The most message bytes the host puts in one packet.
+    packet_body: usize,
+    /// Cycles the host leaves the device after each packet it writes.
+    write_gap: u64,
+}
+
+/// A request that the device sent.
+pub struct DeviceRequest {
+    /// The tag, which the response repeats.
+    pub tag: u8,
+    /// The message type.
+    pub msg_type: u8,
+    pub payload: Vec<u8>,
 }
 
 impl MctpHost {
@@ -48,7 +68,21 @@ impl MctpHost {
             own_eid,
             device_eid,
             tag: 0,
+            packet_body: BASELINE_PACKET_BODY,
+            write_gap: WRITE_GAP_CYCLES,
         })
+    }
+
+    /// Sets the most message bytes the host puts in one packet. The default
+    /// is the MCTP baseline, 64.
+    pub fn set_packet_body(&mut self, bytes: usize) {
+        self.packet_body = bytes.clamp(1, MAX_PACKET_BODY);
+    }
+
+    /// Sets the cycles the host leaves the device to drain a packet from its
+    /// receive FIFO before it writes the next. The default is 150,000.
+    pub fn set_write_gap(&mut self, cycles: u64) {
+        self.write_gap = cycles;
     }
 
     /// Sends `payload` to the device as a request of message type `msg_type`
@@ -58,10 +92,7 @@ impl MctpHost {
         self.tag = (self.tag + 1) & TAG_MASK;
         let mut body = vec![msg_type];
         body.extend_from_slice(payload);
-        for packet in packets(&body, tag, true, self.device_eid, self.own_eid) {
-            self.i3c.private_write(&packet);
-            self.host.run_for(WRITE_GAP_CYCLES).await?;
-        }
+        self.write_message(&body, tag, true).await?;
 
         let (reply_tag, tag_owner, reply) = self.read_message().await?;
         if tag_owner {
@@ -80,6 +111,47 @@ impl MctpHost {
             )),
             None => Err("the response is empty".into()),
         }
+    }
+
+    /// Waits for a request from the device.
+    pub async fn receive_request(&mut self) -> Result<DeviceRequest, String> {
+        let (tag, tag_owner, body) = self.read_message().await?;
+        if !tag_owner {
+            return Err("expected a request, but the device sent a response".into());
+        }
+        match body.split_first() {
+            Some((&msg_type, payload)) => Ok(DeviceRequest {
+                tag,
+                msg_type: msg_type & 0x7f,
+                payload: payload.to_vec(),
+            }),
+            None => Err("the request is empty".into()),
+        }
+    }
+
+    /// Answers `request` with `payload`.
+    pub async fn respond(&mut self, request: &DeviceRequest, payload: &[u8]) -> Result<(), String> {
+        let mut body = vec![request.msg_type];
+        body.extend_from_slice(payload);
+        self.write_message(&body, request.tag, false).await
+    }
+
+    /// Writes the packets of a message to the device, leaving it time to
+    /// drain each from its receive FIFO.
+    async fn write_message(&mut self, body: &[u8], tag: u8, tag_owner: bool) -> Result<(), String> {
+        let packets = packets(
+            body,
+            self.packet_body,
+            tag,
+            tag_owner,
+            self.device_eid,
+            self.own_eid,
+        );
+        for packet in packets {
+            self.i3c.private_write(&packet);
+            self.host.run_for(self.write_gap).await?;
+        }
+        Ok(())
     }
 
     /// Reads one message from the device and reassembles it. Returns the tag,
@@ -114,11 +186,18 @@ impl MctpHost {
 }
 
 /// The packets of a message: `body` (the type byte, then the payload) cut
-/// into packets of at most `MAX_PACKET_BODY` bytes, each behind a transport
+/// into packets of at most `packet_body` bytes, each behind a transport
 /// header. The flags mark the first and last packet and carry a 2-bit packet
 /// sequence number, the tag owner bit (set for a request) and the tag.
-fn packets(body: &[u8], tag: u8, tag_owner: bool, dest: u8, src: u8) -> Vec<Vec<u8>> {
-    let chunks: Vec<&[u8]> = body.chunks(MAX_PACKET_BODY).collect();
+fn packets(
+    body: &[u8],
+    packet_body: usize,
+    tag: u8,
+    tag_owner: bool,
+    dest: u8,
+    src: u8,
+) -> Vec<Vec<u8>> {
+    let chunks: Vec<&[u8]> = body.chunks(packet_body).collect();
     let last = chunks.len() - 1;
     chunks
         .iter()
@@ -147,7 +226,7 @@ mod tests {
 
     #[test]
     fn one_packet_has_both_flags() {
-        let p = packets(&[5, 0x10, 0x84, 0, 0], 3, true, 8, 9);
+        let p = packets(&[5, 0x10, 0x84, 0, 0], 64, 3, true, 8, 9);
         assert_eq!(
             p,
             vec![vec![0x01, 8, 9, 0xc0 | 0x08 | 3, 5, 0x10, 0x84, 0, 0]]
@@ -157,7 +236,7 @@ mod tests {
     #[test]
     fn long_message_is_cut_at_the_baseline() {
         let body: Vec<u8> = (0..130).collect();
-        let p = packets(&body, 0, false, 9, 8);
+        let p = packets(&body, 64, 0, false, 9, 8);
         assert_eq!(p.len(), 3);
         assert_eq!(p[0][3], 0x80);
         assert_eq!(p[1][3], 0x10);

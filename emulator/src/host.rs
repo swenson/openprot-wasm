@@ -66,6 +66,14 @@ pub enum EventKind {
         /// The message bytes in hex.
         bytes: String,
     },
+    /// How far a transfer is. A later event with the same `name` in the same
+    /// step replaces the earlier one.
+    Progress {
+        /// What is transferred, e.g. "MCU runtime image".
+        name: String,
+        done: u64,
+        total: u64,
+    },
     /// A certificate the host received from the device.
     Certificate {
         /// What the certificate is, e.g. "LDevID".
@@ -81,9 +89,20 @@ pub enum Direction {
     Rx,
 }
 
+/// The images of a firmware update that a driver sends to the device.
+#[derive(Clone)]
+pub struct UpdateImages {
+    /// The SoC manifest that authorizes `mcu_fw`.
+    pub soc_manifest: Rc<[u8]>,
+    /// The MCU firmware that replaces the running one.
+    pub mcu_fw: Rc<[u8]>,
+}
+
 /// State shared by the machine and the driver.
 pub(crate) struct Shared {
     pub(crate) model: RefCell<ModelEmulated>,
+    /// The images of the scenario's firmware update, if it has one.
+    pub(crate) update: Option<UpdateImages>,
     /// Everything the UARTs have printed since reset.
     pub(crate) log: RefCell<Vec<u8>>,
     pub(crate) events: RefCell<Vec<Event>>,
@@ -132,6 +151,14 @@ impl Host {
         self.with_model(exit_status)
     }
 
+    /// The images of the scenario's firmware update.
+    pub fn update_images(&self) -> Result<UpdateImages, String> {
+        self.shared
+            .update
+            .clone()
+            .ok_or_else(|| "the scenario has no update images".to_string())
+    }
+
     /// Starts a step of the scenario. The page lists the steps and marks the
     /// last one as running, passed or failed.
     pub fn step(&self, name: &str) {
@@ -150,6 +177,15 @@ impl Host {
             protocol: protocol.into(),
             name: name.into(),
             bytes: bytes.iter().map(|b| format!("{b:02x}")).collect(),
+        });
+    }
+
+    /// Reports how far a transfer is, for the page to show as a bar.
+    pub fn progress(&self, name: &str, done: usize, total: usize) {
+        self.event(EventKind::Progress {
+            name: name.into(),
+            done: done as u64,
+            total: total as u64,
         });
     }
 

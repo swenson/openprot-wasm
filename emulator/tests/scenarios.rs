@@ -33,6 +33,14 @@ fn run_scenario(scenario: &serde_json::Value) {
     let (caliptra_rom, caliptra_fw) = (image("caliptra_rom"), image("caliptra_fw"));
     let (mcu_rom, mcu_fw) = (image("mcu_rom"), image("mcu_fw"));
     let soc_manifest = image("soc_manifest");
+    // The images of the scenario's firmware update, if it has one.
+    let update = scenario["update"].as_object().map(|update| {
+        let image = |name: &str| {
+            let path = www().join(update[name]["path"].as_str().unwrap());
+            std::fs::read(&path).unwrap_or_else(|e| panic!("reading {}: {e}", path.display()))
+        };
+        (image("soc_manifest"), image("mcu_fw"))
+    });
     let images = BootImages {
         caliptra_rom: &caliptra_rom,
         caliptra_fw: &caliptra_fw,
@@ -40,6 +48,9 @@ fn run_scenario(scenario: &serde_json::Value) {
         mcu_rom: &mcu_rom,
         mcu_fw: &mcu_fw,
         vendor_pk_hash: parse_vendor_pk_hash(scenario["vendor_pk_hash"].as_str().unwrap()).unwrap(),
+        update: update
+            .as_ref()
+            .map(|(soc_manifest, mcu_fw)| (soc_manifest.as_slice(), mcu_fw.as_slice())),
     };
     // On the host the model keeps flash contents in these files in the
     // working directory. A browser starts every run with erased flash.
@@ -66,6 +77,12 @@ fn run_scenario(scenario: &serde_json::Value) {
                     "[{id}] {:>11}   {direction:?} {protocol} {name}: {bytes}",
                     event.cycle
                 ),
+                EventKind::Progress { name, done, total } => {
+                    println!(
+                        "[{id}] {:>11}   {name}: {done} of {total} bytes",
+                        event.cycle
+                    )
+                }
                 EventKind::Certificate { name, certificate } => println!(
                     "[{id}] {:>11}   {name} certificate: subject {:?}, issuer {:?}. {}",
                     event.cycle,

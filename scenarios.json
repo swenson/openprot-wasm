@@ -1,7 +1,7 @@
 {
   "openprot": {
     "repo": "https://github.com/OpenPRoT/openprot",
-    "rev": "c7af5ac33bb4c181575a2f1b092a6650a82c040f"
+    "rev": "d0d5bded189bd3f4d0d57e327165cef5d1fd7a01"
   },
   "scenarios": [
     {
@@ -10,6 +10,14 @@
       "description": "The host is an SPDM requester. It sends GET_VERSION, GET_CAPABILITIES and NEGOTIATE_ALGORITHMS to the responder as MCTP messages over I3C. It then reads the certificate chain of slot 0 with GET_DIGESTS and GET_CERTIFICATE and checks the chain's hashes. Last, it checks that the responder refuses GET_CERTIFICATE for an empty slot and CHALLENGE, and answers the request after that.",
       "image": "//target/veer/tests/spdm:spdm_image",
       "driver": "spdm"
+    },
+    {
+      "id": "pldm",
+      "title": "PLDM firmware update",
+      "description": "The host is a PLDM update agent. It sends a new SoC manifest and a new MCU firmware image to the firmware device as PLDM messages over MCTP over I3C. The device stages them in memory, has Caliptra check the manifest's signatures and checks the firmware against the manifest. On ActivateFirmware it gives Caliptra the manifest and asks it to activate the firmware: Caliptra resets the MCU, copies the firmware to MCU SRAM, authorizes it and starts it.",
+      "image": "//target/veer/tests/pldm:pldm_image",
+      "update_image": "//target/veer/tests/pldm/updated:updated",
+      "driver": "pldm"
     },
     {
       "id": "flash",
