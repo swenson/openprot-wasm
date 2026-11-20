@@ -14,6 +14,7 @@ pub mod i3c;
 pub mod machine;
 pub mod mctp;
 pub mod scenarios;
+pub mod x509;
 
 use machine::{BootImages, Machine, State};
 
@@ -120,8 +121,9 @@ impl Emulator {
 
     /// The events the driver has reported since the last call, as a JSON
     /// array. Each has a `cycle` and a `kind`: `step` (with `name`), `note`
-    /// (with `text`) or `message` (with `direction`, `protocol`, `name` and
-    /// `bytes` in hex).
+    /// (with `text`), `message` (with `direction`, `protocol`, `name` and
+    /// `bytes` in hex) or `certificate` (with `name` and `certificate`, an
+    /// [`x509::CertificateInfo`]).
     pub fn take_events(&mut self) -> String {
         serde_json::to_string(&self.machine.take_events()).unwrap_or_default()
     }

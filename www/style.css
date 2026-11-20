@@ -343,6 +343,134 @@ button:disabled {
   overflow-wrap: anywhere;
 }
 
+.message summary {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--muted);
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+
+.certificate {
+  margin: 8px 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-2);
+}
+
+.cert-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.cert-title {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.cert-size,
+.cert-attr,
+.fields dt {
+  color: var(--muted);
+}
+
+.cert-size,
+.cert-attr {
+  font-size: 12px;
+}
+
+.fields {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 2px 12px;
+  margin: 0;
+}
+
+.fields dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+/* The label above its value, for long values. */
+.fields.stacked {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+}
+
+.fields.stacked dd {
+  margin-bottom: 4px;
+}
+
+.certificate code {
+  font-family: var(--mono);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.cert-check[data-verified="true"] {
+  color: var(--green);
+  font-weight: 600;
+}
+
+.cert-check[data-verified="false"] {
+  color: var(--muted);
+}
+
+.cert-details {
+  margin-top: 8px;
+}
+
+.cert-details summary,
+.cert-download {
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.cert-details .fields {
+  margin-top: 6px;
+}
+
+.cert-ext-title {
+  margin-top: 8px;
+  font-weight: 600;
+}
+
+.cert-ext {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+}
+
+.cert-ext .fields + .fields {
+  padding-top: 6px;
+  border-top: 1px dashed var(--border);
+}
+
+.cert-tag {
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--blue-soft);
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.cert-oid {
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+.cert-download {
+  display: inline-block;
+  margin-top: 8px;
+}
+
 .console {
   height: 520px;
   margin: 0;

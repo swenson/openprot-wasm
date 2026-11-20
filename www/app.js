@@ -185,6 +185,16 @@ function addNote(text) {
   addToStep(p);
 }
 
+// A message of more bytes than MAX_SHOWN_BYTES is collapsed to its first
+// SUMMARY_BYTES.
+const MAX_SHOWN_BYTES = 64;
+const SUMMARY_BYTES = 16;
+
+// Hex digits as bytes separated by spaces.
+function spacedHex(hex) {
+  return hex.replace(/../g, "$& ").trim();
+}
+
 function addMessage(event) {
   const message = document.createElement("div");
   message.className = "message";
@@ -192,9 +202,134 @@ function addMessage(event) {
   const head = document.createElement("div");
   head.className = "message-head";
   const arrow = event.direction === "tx" ? "→" : "←";
-  head.textContent = `${arrow} ${event.protocol} ${event.name} (${event.bytes.length / 2} bytes)`;
-  message.append(head, code(event.bytes.replace(/../g, "$& ").trim()));
+  const length = event.bytes.length / 2;
+  head.textContent = `${arrow} ${event.protocol} ${event.name} (${length} bytes)`;
+  message.append(head);
+  if (length <= MAX_SHOWN_BYTES) {
+    message.append(code(spacedHex(event.bytes)));
+  } else {
+    // A long message shows its first bytes and opens to show all of them.
+    const details = document.createElement("details");
+    const summary = document.createElement("summary");
+    summary.textContent = `${spacedHex(event.bytes.slice(0, 2 * SUMMARY_BYTES))} …`;
+    details.append(summary, code(spacedHex(event.bytes)));
+    message.append(details);
+  }
   addToStep(message);
+}
+
+// An element with a class and children (nodes or strings).
+function el(tag, className, ...children) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  node.append(...children);
+  return node;
+}
+
+// A definition list of [label, value] rows. A value is a node, a string or
+// an array of them.
+function fieldList(rows, className = "fields") {
+  const list = el("dl", className);
+  for (const [label, value] of rows) list.append(el("dt", "", label), el("dd", "", ...[value].flat()));
+  return list;
+}
+
+// A subject or issuer name: the common name, then the other attributes.
+function nameNode(attributes) {
+  return el(
+    "div",
+    "",
+    ...attributes.map(({ label, value }) =>
+      label === "CN" ? el("div", "cert-cn", value) : el("div", "cert-attr", `${label} `, code(value)),
+    ),
+  );
+}
+
+// "2023-01-01T00:00:00Z" as "2023-01-01 00:00:00 UTC".
+function utc(time) {
+  return time.replace("T", " ").replace("Z", " UTC");
+}
+
+// A certificate with this end date has no expiry date (RFC 5280).
+const NO_EXPIRY = "9999-12-31T23:59:59Z";
+
+// A data URL of the PEM encoding of a certificate, from its DER in hex.
+function pemUrl(derHex) {
+  const der = String.fromCharCode(...derHex.match(/../g).map((byte) => parseInt(byte, 16)));
+  const lines = btoa(der).match(/.{1,64}/g).join("\n");
+  const pem = `-----BEGIN CERTIFICATE-----\n${lines}\n-----END CERTIFICATE-----\n`;
+  return `data:application/x-pem-file;base64,${btoa(pem)}`;
+}
+
+function extensionNode(extension) {
+  const head = el("div", "cert-ext-head", extension.name);
+  if (extension.critical) head.append(" ", el("span", "cert-tag", "critical"));
+  if (extension.name !== extension.oid) head.append(" ", el("span", "cert-oid", extension.oid));
+  return el(
+    "div",
+    "cert-ext",
+    head,
+    ...extension.groups.map((group) =>
+      fieldList(
+        group.map(({ label, value }) => [label, code(value)]),
+        "fields stacked",
+      ),
+    ),
+  );
+}
+
+// A card for a certificate: its names, validity, key and signature, with the
+// rest of its contents behind "Details".
+function addCertificate(event) {
+  const certificate = event.certificate;
+  const title = `${event.name[0].toUpperCase()}${event.name.slice(1)} certificate`;
+  const valid =
+    certificate.not_after === NO_EXPIRY
+      ? `From ${utc(certificate.not_before)}, with no expiry date`
+      : `${utc(certificate.not_before)} to ${utc(certificate.not_after)}`;
+  const check = el("span", "cert-check", certificate.signature_check.text);
+  check.dataset.verified = certificate.signature_check.verified;
+
+  const details = el(
+    "details",
+    "cert-details",
+    el("summary", "", "Details"),
+    fieldList(
+      [
+        ["Serial number", code(certificate.serial)],
+        ["SHA-256 fingerprint", code(certificate.sha256)],
+        ["Public key", code(certificate.public_key.bytes)],
+      ],
+      "fields stacked",
+    ),
+    el("div", "cert-ext-title", "Extensions"),
+    ...certificate.extensions.map(extensionNode),
+  );
+  const download = el("a", "cert-download", "Download PEM");
+  download.href = pemUrl(certificate.der);
+  download.download = `${event.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.pem`;
+
+  addToStep(
+    el(
+      "div",
+      "certificate",
+      el(
+        "div",
+        "cert-head",
+        el("span", "cert-title", title),
+        el("span", "cert-size", `${certificate.der.length / 2} bytes`),
+      ),
+      fieldList([
+        ["Subject", nameNode(certificate.subject)],
+        ["Issuer", nameNode(certificate.issuer)],
+        ["Valid", valid],
+        ["Key", certificate.public_key.algorithm],
+        ["Signature", [`${certificate.signature_algorithm}. `, check]],
+      ]),
+      details,
+      download,
+    ),
+  );
 }
 
 function showEvents(events) {
@@ -202,6 +337,7 @@ function showEvents(events) {
     if (event.kind === "step") addStep(event);
     else if (event.kind === "note") addNote(event.text);
     else if (event.kind === "message") addMessage(event);
+    else if (event.kind === "certificate") addCertificate(event);
   }
 }
 

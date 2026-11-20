@@ -66,6 +66,13 @@ fn run_scenario(scenario: &serde_json::Value) {
                     "[{id}] {:>11}   {direction:?} {protocol} {name}: {bytes}",
                     event.cycle
                 ),
+                EventKind::Certificate { name, certificate } => println!(
+                    "[{id}] {:>11}   {name} certificate: subject {:?}, issuer {:?}. {}",
+                    event.cycle,
+                    certificate.subject_common_name().unwrap_or("?"),
+                    certificate.issuer_common_name().unwrap_or("?"),
+                    certificate.signature_check.text
+                ),
             }
         }
         let tail = || &uart[uart.len().saturating_sub(4000)..];

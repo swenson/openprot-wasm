@@ -20,6 +20,8 @@ use caliptra_hw_model::ExitStatus;
 use mcu_hw_model::{McuHwModel, ModelEmulated};
 use serde::Serialize;
 
+use crate::x509::CertificateInfo;
+
 /// The MCU ROM sets this MCI boot milestone when it has finished its boot
 /// flow, just before it jumps to the firmware.
 const FIRMWARE_BOOT_FLOW_COMPLETE: u16 = 1 << 7;
@@ -63,6 +65,12 @@ pub enum EventKind {
         name: String,
         /// The message bytes in hex.
         bytes: String,
+    },
+    /// A certificate the host received from the device.
+    Certificate {
+        /// What the certificate is, e.g. "LDevID".
+        name: String,
+        certificate: Box<CertificateInfo>,
     },
 }
 
@@ -142,6 +150,14 @@ impl Host {
             protocol: protocol.into(),
             name: name.into(),
             bytes: bytes.iter().map(|b| format!("{b:02x}")).collect(),
+        });
+    }
+
+    /// Reports a certificate received from the device, for the page to show.
+    pub fn certificate(&self, name: &str, certificate: CertificateInfo) {
+        self.event(EventKind::Certificate {
+            name: name.into(),
+            certificate: Box::new(certificate),
         });
     }
 
