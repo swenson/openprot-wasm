@@ -27,9 +27,21 @@ The two drivers:
 - `spdm` is an SPDM requester. It follows OpenPRoT's
   `target/veer/tests/spdm/host_test.rs`: it sends `GET_VERSION`,
   `GET_CAPABILITIES` and `NEGOTIATE_ALGORITHMS` as MCTP messages over I3C and
-  checks the responses. It then checks that `GET_DIGESTS` is refused (the
-  image has no certificates) and that the responder answers the request after
-  that.
+  checks the responses. It then reads the certificate chain of slot 0 with
+  `GET_DIGESTS` and `GET_CERTIFICATE`. The chain is Caliptra's LDevID, FMC
+  alias and runtime alias certificates and a leaf certificate that Caliptra's
+  DPE issues. The driver checks that the chain holds four certificates, that
+  the root hash in the chain's header is the hash of the first certificate,
+  and that the digest from `GET_DIGESTS` is the hash of the chain. Last, it
+  checks that the responder refuses `GET_CERTIFICATE` for an empty slot and
+  `CHALLENGE`, which the responder does not support, and still answers
+  `GET_VERSION` afterwards.
+
+  The driver also checks that each certificate after the first is issued and
+  signed by the one before it, which the host test does not check. The
+  IDevID issues the LDevID certificate, and the chain has no IDevID
+  certificate, so it has no key to check the LDevID certificate's signature
+  with. The page shows that signature as not checked.
 - `on-device` boots an image that tests itself and waits for it to exit with
   PASS or FAIL. OpenPRoT runs such images with `caliptra_on_device_test` and
   has more of them. The eight `on-device` scenarios in the table are the ones
@@ -37,8 +49,21 @@ The two drivers:
 
 The page shows the driver's steps, the messages it exchanges, and the UART
 output of Caliptra and the MCU, with the ANSI colors of OpenPRoT's log lines.
-A table lists each image, the sources it was built from, and their version
-(see [Sources and versions](#sources-and-versions)).
+A message of more than 64 bytes is collapsed to its first 16 bytes; clicking
+it shows all of them.
+
+The `spdm` scenario also shows each certificate of the chain: its subject,
+issuer, validity, key type, and whether its signature verified. Clicking
+"Details" adds the serial number, the public key and the extensions, with the
+TCG DICE ones decoded (`tcg-dice-TcbInfo`, `tcg-dice-MultiTcbInfo`,
+`tcg-dice-Ueid`). The "Download PEM" link saves the certificate.
+
+A decoded TCB info has a security version number (SVN). In its FMC alias and
+runtime alias certificates, Caliptra writes an SVN n as 256 + n, which always
+takes two bytes, so SVN 0 shows there as 256.
+
+A table on the page lists each image, the sources it was built from, and the
+version of those sources (see [Sources and versions](#sources-and-versions)).
 `?scenario=<id>` selects a scenario and `&run` starts it, e.g.
 `http://localhost:8080/?scenario=spdm&run`.
 
@@ -115,14 +140,14 @@ After `./build.sh`:
 node tests/browser/scenario-test.mjs
 ```
 
-`SCENARIOS="spdm"` limits the host test to some scenarios. Before sending
+`SCENARIOS="spdm"` limits the `cargo test` run to some scenarios. Before sending
 changes, run `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`
 and `cargo clippy --target wasm32-unknown-unknown -- -D warnings` in
 `emulator/`.
 
 All nine scenarios pass on the host and in Firefox. A scenario runs for 14 to
-26 million emulated cycles. Headless Firefox ran about 0.5 million cycles per
-second on the machine this was developed on, so a scenario took 30 to 70
+26 million emulated cycles. Headless Firefox ran 0.4 to 0.5 million cycles
+per second on the machine this was developed on, and a scenario took 30 to 70
 seconds.
 
 ## Adding a scenario
@@ -150,8 +175,9 @@ For a test with a host side, port the host test to a driver.
    and list it in `DRIVERS` in `emulator/src/scenarios/mod.rs`.
 2. The page lists a driver's progress as named steps. Call `host.step(name)`
    when the driver starts one, `host.note(...)` to remark on it, and
-   `host.message(...)` for each message sent or received. An `Err` fails the
-   step the driver is in.
+   `host.message(...)` for each message sent or received.
+   `host.certificate(...)` shows a certificate that `x509::describe` has
+   parsed. An `Err` fails the step the driver is in.
 3. Use `MctpHost` (`emulator/src/mctp.rs`) to exchange MCTP messages, or
    `I3cHost` for raw I3C transfers. `host.with_model(...)` gives the hardware
    model for anything else (mailboxes, MCI registers).
@@ -168,7 +194,8 @@ For a test with a host side, port the host test to a driver.
   builds only the `.boot_env` file.
 - `emulator/`: the Rust crate. `machine.rs` is the emulator and the driver
   runner, `host.rs` the driver's view of it, `i3c.rs` and `mctp.rs` the host's
-  transports, `scenarios/` the drivers, and `lib.rs` the JavaScript API.
+  transports, `x509.rs` the certificate parser, `scenarios/` the drivers,
+  and `lib.rs` the JavaScript API.
   `cfi-shim/` stands in for caliptra-cfi-lib, whose inline assembly does not
   build for wasm32.
 - `www/`: the page (`index.html`, `app.js`, `style.css`) and the build output.
@@ -177,7 +204,7 @@ For a test with a host side, port the host test to a driver.
 
 ## Sources and versions
 
-At the OpenPRoT revision that `scenarios.json` pins (`30b78eeb` on `main`), a
+At the OpenPRoT revision that `scenarios.json` pins (`c7af5ac3` on `main`), a
 scenario runs:
 
 - the Caliptra ROM, FMC and runtime built from caliptra-sw's 2.1.3 sources
@@ -195,15 +222,15 @@ caliptra-mcu-sw revisions are its pins in `third_party/caliptra/versions.bzl`.
 | Caliptra FMC | chipsalliance/caliptra-sw `b99535de` | 2.1.3 |
 | Caliptra runtime | chipsalliance/caliptra-sw `b99535de` | 2.1.3 |
 | MCU ROM | chipsalliance/caliptra-mcu-sw `8c9c8ff2` (tag `rt-sdk-2.1.1`) | has none |
-| MCU firmware | [OpenPRoT/openprot](https://github.com/OpenPRoT/openprot) `30b78eeb` | has none |
+| MCU firmware | [OpenPRoT/openprot](https://github.com/OpenPRoT/openprot) `c7af5ac3` | has none |
 
 The OpenPRoT revision identifies the MCU firmware.
 
 The source version of the ROM, the FMC and the runtime is each one's constant
 in caliptra-sw's `builder/src/version.rs` (`ROM_VERSION_*`, `FMC_VERSION_*`
-and `RUNTIME_VERSION_*`). The images that OpenPRoT builds report other numbers
-in Caliptra's `CPTRA_FW_REV_ID` registers: 2.0.0 for the ROM and 0 for the FMC
-and the runtime (OpenPRoT/openprot#765).
+and `RUNTIME_VERSION_*`). OpenPRoT stamps the images with these constants, so
+the ROM, the FMC and the runtime report 2.1.3 in Caliptra's `CPTRA_FW_REV_ID`
+registers.
 
 The Caliptra ROM is not caliptra-sw's released ROM binary. OpenPRoT compiles
 it from the `fw-2.1.3` commit, and caliptra-sw's ROM release tag `rom-2.1.3-1`
@@ -243,8 +270,7 @@ result here can differ from theirs.
   the same time interleave. `Host::wait_for_log` therefore also accepts a
   line that has characters of another line mixed into it.
 - The `spdm` driver matches the host test at the pinned OpenPRoT revision.
-  When the SPDM image gains certificates (OpenPRoT/openprot#762), the driver
-  has to follow.
+  When that test changes, the driver has to follow.
 - OpenPRoT's other host-driven VeeR tests have no driver yet: `mctp_i3c`,
-  `i3c_service`, `rx_timing`, `runtime` and `ocp_recovery`.
+  `i3c_service`, `rx_timing`, `mcu_mbox`, `runtime` and `ocp_recovery`.
 - OpenPRoT has no firmware update test for VeeR at the pinned revision.

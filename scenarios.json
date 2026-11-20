@@ -1,13 +1,13 @@
 {
   "openprot": {
     "repo": "https://github.com/OpenPRoT/openprot",
-    "rev": "30b78eeb9b77f71ea62713d4855dd04c4170e109"
+    "rev": "c7af5ac33bb4c181575a2f1b092a6650a82c040f"
   },
   "scenarios": [
     {
       "id": "spdm",
       "title": "SPDM responder",
-      "description": "The host is an SPDM requester. It sends GET_VERSION, GET_CAPABILITIES and NEGOTIATE_ALGORITHMS to the responder as MCTP messages over I3C, then checks that GET_DIGESTS is refused (the image has no certificates) and that the responder answers the request after that.",
+      "description": "The host is an SPDM requester. It sends GET_VERSION, GET_CAPABILITIES and NEGOTIATE_ALGORITHMS to the responder as MCTP messages over I3C. It then reads the certificate chain of slot 0 with GET_DIGESTS and GET_CERTIFICATE and checks the chain's hashes. Last, it checks that the responder refuses GET_CERTIFICATE for an empty slot and CHALLENGE, and answers the request after that.",
       "image": "//target/veer/tests/spdm:spdm_image",
       "driver": "spdm"
     },

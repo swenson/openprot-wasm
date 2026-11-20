@@ -49,10 +49,41 @@ const PAGE_STATE = `({
     state: step.dataset.state,
     messages: [...step.querySelectorAll(".message-head")].map((m) => m.textContent),
   })),
+  certificates: [...document.querySelectorAll("#steps .certificate")].map((card) => ({
+    title: card.querySelector(".cert-title").textContent,
+    subject: card.querySelector(".cert-cn")?.textContent ?? "",
+    signature: card.querySelector(".cert-check").textContent,
+    extensions: card.querySelectorAll(".cert-ext").length,
+    pem: card.querySelector("a[download]").href,
+  })),
   uart: document.getElementById("uart").textContent,
   images: document.getElementById("images").tBodies[0].innerText,
   coloredSpans: document.querySelectorAll('#uart span[class*="ansi-fg-"]').length,
 })`;
+
+// The certificates that a scenario's driver reports, by scenario id.
+const CERTIFICATES = {
+  spdm: ["LDevID certificate", "FMC alias certificate", "Runtime alias certificate", "Leaf certificate"],
+};
+
+// Why the certificate cards of the page are not the ones `id` should show,
+// or "" if they are.
+function certificateProblem(id, cards) {
+  const titles = cards.map((card) => card.title);
+  const expected = CERTIFICATES[id] ?? [];
+  if (titles.join() !== expected.join()) return `certificates shown: [${titles.join(", ")}]`;
+  for (const [i, card] of cards.entries()) {
+    if (!card.subject) return `${card.title}: no subject`;
+    if (card.extensions === 0) return `${card.title}: no extensions`;
+    // Each certificate after the first is checked against the one before.
+    if (i > 0 && !card.signature.startsWith("Verifies")) return `${card.title}: ${card.signature}`;
+    const pem = Buffer.from(card.pem.split(",")[1], "base64").toString();
+    if (!/^-----BEGIN CERTIFICATE-----\n[A-Za-z0-9+/=\n]+-----END CERTIFICATE-----\n$/.test(pem)) {
+      return `${card.title}: the download is not a PEM certificate`;
+    }
+  }
+  return "";
+}
 
 async function runScenario(bidi, context, baseUrl, pageErrors, scenario, args) {
   const id = scenario.id;
@@ -124,6 +155,8 @@ async function runScenario(bidi, context, baseUrl, pageErrors, scenario, args) {
   // rendered, not printed.
   if (st.coloredSpans === 0) await fail("no colored text in the UART pane");
   if (/\x1b|\[\d+(;\d+)*m/.test(st.uart)) await fail("an escape sequence was printed in the UART pane");
+  const problem = certificateProblem(id, st.certificates);
+  if (problem) await fail(problem);
   if (pageErrors.length) await fail("the page logged an error");
   await save();
   const seconds = ((Date.now() - started) / 1000).toFixed(0);
